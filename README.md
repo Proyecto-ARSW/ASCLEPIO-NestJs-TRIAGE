@@ -2,7 +2,7 @@
 
 Microservicio para gestión de triage hospitalario inteligente del sistema ASCLEPIO.
 
-## 🏥 Descripción
+## Descripción
 
 Sistema de triage hospitalario que permite:
 - Autoevaluación del paciente mediante cuestionario
@@ -14,7 +14,7 @@ Sistema de triage hospitalario que permite:
 - Alertas críticas automáticas
 - Dashboard en tiempo real para médicos y enfermeros
 
-## 🚀 Tecnologías
+## Tecnologías
 
 - **Framework:** NestJS 11
 - **Lenguaje:** TypeScript 5.7
@@ -25,7 +25,7 @@ Sistema de triage hospitalario que permite:
 - **GraphQL:** Apollo Server (Subscriptions)
 - **Monitoreo:** Prometheus + Grafana
 
-## 📋 Requisitos previos
+## Requisitos previos
 
 - Node.js 20+
 - pnpm 8+
@@ -34,7 +34,7 @@ Sistema de triage hospitalario que permite:
 - Redis 7+
 - RabbitMQ 3+
 
-## 🔧 Instalación
+## Instalación
 
 ### 1. Clonar repositorio
 ```bash
@@ -65,7 +65,7 @@ pnpm prisma migrate dev
 pnpm prisma:seed
 ```
 
-## 🏃 Ejecución
+## Ejecución
 
 ### Desarrollo
 ```bash
@@ -82,13 +82,13 @@ docker-compose up -d
 docker-compose logs -f triage-service
 ```
 
-## 📊 Monitoreo
+## Monitoreo
 
 - **Prometheus:** http://localhost:9090
 - **Grafana:** http://localhost:4001 (admin/admin)
 - **RabbitMQ Management:** http://localhost:15672 (guest/guest)
 
-## 🧪 Testing
+## Testing
 ```bash
 # Unit tests
 pnpm test
@@ -100,13 +100,13 @@ pnpm test:e2e
 pnpm test:cov
 ```
 
-## 📚 Documentación API
+## Documentación API
 
 Una vez iniciado el servidor:
 - **GraphQL Playground:** http://localhost:3001/graphql
 - **Swagger/OpenAPI:** http://localhost:3001/api
 
-## 🏗️ Arquitectura
+## Arquitectura
 ```
 src/
 ├── modules/
@@ -123,16 +123,15 @@ src/
 └── main.ts                  # Entry point
 ```
 
-## 🔗 Integración con otros microservicios
+## Integración con otros microservicios
 
 - **asclepio-core (3000):** Datos de usuarios, pacientes, médicos
 - **ptia-ollama-prelim (3002):** IA evaluación preliminar
 - **ptia-triage-classifier (3003):** IA clasificación final
 - **asclepio-farmacia (3004):** Medicamentos y órdenes
 
-## 👥 Equipo
+## Equipo
 
-- **Proyecto:** ASCLEPIO - ECI
 - **Materias:** TDSE + ARSW
 - **Año:** 2026-1
 
