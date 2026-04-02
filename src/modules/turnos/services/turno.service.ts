@@ -13,6 +13,7 @@ import { LlamarPacienteDto } from '../dto/llamar-paciente.dto';
 import { FinalizarTurnoDto } from '../dto/finalizar-turno.dto';
 import { GeneradorNumeroService } from './generador-numero.service';
 import { TipoTurno, EstadoTurno, Turno } from '../entities/turno.entity';
+import { ColaService } from '@/modules/cola/services/cola.service';
 
 @Injectable()
 export class TurnoService {
@@ -21,6 +22,7 @@ export class TurnoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generadorNumero: GeneradorNumeroService,
+    private readonly colaService: ColaService,
   ) {}
 
   /**
@@ -171,10 +173,20 @@ export class TurnoService {
    */
   async llamarPaciente(id: string, dto: LlamarPacienteDto): Promise<Turno> {
     const turno = await this.obtenerPorId(id);
+
     if (turno.estado !== EstadoTurno.EN_ESPERA) {
       throw new BadRequestException(
         `El turno debe estar en estado EN_ESPERA. Estado actual: ${turno.estado}`,
       );
+    }
+
+    if (turno.nivel_triage_id) {
+      await this.colaService.removerDeCola(
+        id,
+        turno.hospital_id,
+        turno.nivel_triage_id,
+      );
+      this.logger.log(`Turno removido de cola Redis`);
     }
 
     const turnoActualizado = await this.prisma.turnos.update({
