@@ -1,51 +1,62 @@
+// src/app.module.ts
+
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
-import { join } from 'path';
+import { ScheduleModule } from '@nestjs/schedule';
 
+// Configuraciones
+import appConfig from './config/app.config';
+import databaseConfig from './config/database.config';
+import redisConfig from './config/redis.config';
+import rabbitmqConfig from './config/rabbitmq.config';
+
+// Módulos core
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 
-// TODO: Importar módulos cuando estén creados
-// import { CuestionarioModule } from './modules/cuestionario/cuestionario.module';
-// import { RegistroTriageModule } from './modules/registro-triage/registro-triage.module';
-// import { TurnosModule } from './modules/turnos/turnos.module';
-// import { ColaModule } from './modules/cola/cola.module';
-// import { AlertasModule } from './modules/alertas/alertas.module';
-// import { WebsocketsModule } from './modules/websockets/websockets.module';
-// import { EventosModule } from './modules/eventos/eventos.module';
-// import { DashboardModule } from './modules/dashboard/dashboard.module';
-// import { SharedModule } from './modules/shared/shared.module';
+// Módulos de feature
+import { SharedModule } from './modules/shared/shared.module';
+import { ColaModule } from './modules/cola/cola.module';
+import { EventosModule } from './modules/eventos/eventos.module';
+import { WebsocketsModule } from './modules/websockets/websockets.module';
+import { TurnosModule } from './modules/turnos/turnos.module';
+import { CuestionarioModule } from './modules/cuestionario/cuestionario.module';
+import { VitalesModule } from './modules/vitales/vitales.module';
+import { ConfirmacionModule } from './modules/confirmacion/confirmacion.module';
+import { AlertasModule } from './modules/alertas/alertas.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
-
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
       cache: true,
+      load: [appConfig, databaseConfig, redisConfig, rabbitmqConfig],
     }),
-
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/graphql/schema.gql'),
+      autoSchemaFile: true, 
       sortSchema: true,
       playground: process.env.NODE_ENV !== 'production',
+      introspection: process.env.NODE_ENV !== 'production',
       subscriptions: {
         'graphql-ws': true,
-        'subscriptions-transport-ws': true,
+        'subscriptions-transport-ws': true, 
       },
       context: ({ req, connection }) => {
-
         if (req) {
           return { req };
         }
-
-        return { connection };
+        if (connection) {
+          return { req: connection.context };
+        }
       },
     }),
+
     PrometheusModule.register({
       path: '/metrics',
       defaultMetrics: {
@@ -53,17 +64,26 @@ import { HealthModule } from './health/health.module';
       },
     }),
 
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
-    // SharedModule,
-    // CuestionarioModule,
-    // RegistroTriageModule,
-    // TurnosModule,
-    // ColaModule,
-    // AlertasModule,
-    // WebsocketsModule,
-    // EventosModule,
-    // DashboardModule,
+    
+    // Módulos globales (marcados con @Global())
+    SharedModule,       // Entidades compartidas GraphQL
+    ColaModule,         // Cola priorizada Redis + Pub/Sub
+    EventosModule,      // RabbitMQ publishers + consumers
+    WebsocketsModule,   // Socket.IO gateway
+
+    // Módulos de dominio
+    TurnosModule,       // Gestión de turnos
+    CuestionarioModule, // Cuestionarios + IA preliminar (Ollama)
+    VitalesModule,      // Signos vitales + IA clasificación (Random Forest)
+    ConfirmacionModule, // Confirmación enfermero + métricas IA
+    AlertasModule,      // Alertas críticas + GraphQL Subscriptions
+    TasksModule,        // Cron jobs (escalamiento automático)
+    DashboardModule,    // 6 dashboards especializados
   ],
+  controllers: [],
+  providers: [],
 })
 export class AppModule {}

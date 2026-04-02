@@ -1,6 +1,6 @@
 generator client {
-  provider     = "prisma-client-js"
-  output       = "../node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../node_modules/.prisma/client"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -8,6 +8,10 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ============================================
+// ENUMS
+// ============================================
 
 enum rol_usuario {
   PACIENTE
@@ -44,23 +48,26 @@ enum tipo_alerta_critica {
   TRIAGE_CRITICO_PRELIMINAR
 }
 
+// ============================================
+// MODELOS
+// ============================================
 
 model usuarios {
-  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre                  String                @db.VarChar(100)
-  apellido                String                @db.VarChar(100)
-  email                   String                @unique @db.VarChar(150)
-  password_hash           String
-  rol                     rol_usuario           @default(PACIENTE)
-  telefono                String?               @db.VarChar(20)
-  activo                  Boolean               @default(true)
-  creado_en               DateTime              @default(now()) @db.Timestamp(6)
-  actualizado_en          DateTime              @default(now()) @db.Timestamp(6)
+  id                              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre                          String                @db.VarChar(100)
+  apellido                        String                @db.VarChar(100)
+  email                           String                @unique @db.VarChar(150)
+  password_hash                   String
+  rol                             rol_usuario           @default(PACIENTE)
+  telefono                        String?               @db.VarChar(20)
+  activo                          Boolean               @default(true)
+  creado_en                       DateTime              @default(now()) @db.Timestamp(6)
+  actualizado_en                  DateTime              @default(now()) @db.Timestamp(6)
   
-  enfermeros              enfermeros[]
-  alertas_criticas_notificado alertas_criticas[] @relation("AlertaNotificado")
-  alertas_criticas_confirmado alertas_criticas[] @relation("AlertaConfirmado")
-  alertas_triage_resuelto alertas_triage[]
+  enfermeros                      enfermeros[]
+  alertas_criticas_notificado     alertas_criticas[]    @relation("AlertaNotificado")
+  alertas_criticas_confirmado     alertas_criticas[]    @relation("AlertaConfirmado")
+  alertas_triage_resuelto         alertas_triage[]
 }
 
 model pacientes {
@@ -134,22 +141,22 @@ model formacion {
 }
 
 model enfermeros {
-  id                        String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuario_id                String                  @db.Uuid
-  numero_registro           String                  @unique @db.VarChar(50)
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id                String                      @db.Uuid
+  numero_registro           String                      @unique @db.VarChar(50)
   nivel_formacion_id        Int
   area_especializacion_id   Int?
-  certificacion_triage      Boolean                 @default(false)
-  fecha_certificacion       DateTime?               @db.Date
-  activo                    Boolean                 @default(true)
-  creado_en                 DateTime                @default(now()) @db.Timestamp(6)
+  certificacion_triage      Boolean                     @default(false)
+  fecha_certificacion       DateTime?                   @db.Date
+  activo                    Boolean                     @default(true)
+  creado_en                 DateTime                    @default(now()) @db.Timestamp(6)
   
-  usuarios                  usuarios                @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  formacion                 formacion               @relation(fields: [nivel_formacion_id], references: [id])
+  usuarios                  usuarios                    @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  formacion                 formacion                   @relation(fields: [nivel_formacion_id], references: [id])
   
   registros_triage          registros_triage[]
   confirmaciones_enfermero  confirmaciones_enfermero[]
-  turnos_enfermero          turnos[]                @relation("EnfermeroTriage")
+  turnos_enfermero          turnos[]                    @relation("EnfermeroTriage")
   disponibilidad_enfermero  disponibilidad_enfermero[]
   
   @@index([usuario_id], map: "idx_enfermeros_usuario")
@@ -171,19 +178,19 @@ model disponibilidad_enfermero {
 }
 
 model niveles_triage {
-  id                      Int                   @id @default(autoincrement())
-  nivel                   Int                   @unique @db.SmallInt
-  nombre                  String                @db.VarChar(50)
+  id                      Int                           @id @default(autoincrement())
+  nivel                   Int                           @unique @db.SmallInt
+  nombre                  String                        @db.VarChar(50)
   descripcion             String?
-  tiempo_max_espera_min   Int                   @db.SmallInt
-  color_codigo            String?               @db.VarChar(7)
-  activo                  Boolean               @default(true)
+  tiempo_max_espera_min   Int                           @db.SmallInt
+  color_codigo            String?                       @db.VarChar(7)
+  activo                  Boolean                       @default(true)
   
-  cuestionario_preliminar cuestionario_triage[] @relation("NivelPreliminar")
-  registros_nivel         registros_triage[]    @relation("NivelTriage")
-  registros_sugerido      registros_triage[]    @relation("NivelSugerido")
-  confirmaciones_ollama   confirmaciones_enfermero[] @relation("NivelOllama")
-  confirmaciones_final    confirmaciones_enfermero[] @relation("NivelFinal")
+  cuestionario_preliminar cuestionario_triage[]         @relation("NivelPreliminar")
+  registros_nivel         registros_triage[]            @relation("NivelTriage")
+  registros_sugerido      registros_triage[]            @relation("NivelSugerido")
+  confirmaciones_ollama   confirmaciones_enfermero[]    @relation("NivelOllama")
+  confirmaciones_final    confirmaciones_enfermero[]    @relation("NivelFinal")
   turnos                  turnos[]
   alertas_criticas        alertas_criticas[]
 }
@@ -296,42 +303,42 @@ model confirmaciones_enfermero {
 }
 
 model turnos {
-  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hospital_id             Int
-  paciente_id             String              @db.Uuid
+  paciente_id             String                @db.Uuid
   
   tipo_turno              tipo_turno
   
   // Para CONSULTA
-  medico_id               String?             @db.Uuid
+  medico_id               String?               @db.Uuid
   especialidad_id         Int?
-  fecha_hora_programada   DateTime?           @db.Timestamp(6)
+  fecha_hora_programada   DateTime?             @db.Timestamp(6)
   
   // Para URGENCIA
-  registro_triage_id      String?             @db.Uuid
-  enfermero_triage_id     String?             @db.Uuid
+  registro_triage_id      String?               @db.Uuid
+  enfermero_triage_id     String?               @db.Uuid
   nivel_triage_id         Int?
   
-  numero_turno            Int                 @db.SmallInt
-  estado                  estado_turno        @default(CUESTIONARIO_PENDIENTE)
+  numero_turno            Int                   @db.SmallInt
+  estado                  estado_turno          @default(CUESTIONARIO_PENDIENTE)
   
-  llamado_en              DateTime?           @db.Timestamp(6)
-  atendido_en             DateTime?           @db.Timestamp(6)
-  finalizado_en           DateTime?           @db.Timestamp(6)
+  llamado_en              DateTime?             @db.Timestamp(6)
+  atendido_en             DateTime?             @db.Timestamp(6)
+  finalizado_en           DateTime?             @db.Timestamp(6)
   
-  fecha                   DateTime            @default(dbgenerated("CURRENT_DATE")) @db.Date
-  creado_en               DateTime            @default(now()) @db.Timestamp(6)
-  actualizado_en          DateTime            @default(now()) @db.Timestamp(6)
+  fecha                   DateTime              @default(dbgenerated("CURRENT_DATE")) @db.Date
+  creado_en               DateTime              @default(now()) @db.Timestamp(6)
+  actualizado_en          DateTime              @default(now()) @db.Timestamp(6)
   
-  hospitales              hospitales          @relation(fields: [hospital_id], references: [id])
-  pacientes               pacientes           @relation(fields: [paciente_id], references: [id])
-  medicos                 medicos?            @relation(fields: [medico_id], references: [id])
-  especialidades          especialidades?     @relation(fields: [especialidad_id], references: [id])
-  registro_triage         registros_triage?   @relation(fields: [registro_triage_id], references: [id])
-  enfermero_triage        enfermeros?         @relation("EnfermeroTriage", fields: [enfermero_triage_id], references: [id])
-  nivel_triage            niveles_triage?     @relation(fields: [nivel_triage_id], references: [id])
+  hospitales              hospitales            @relation(fields: [hospital_id], references: [id])
+  pacientes               pacientes             @relation(fields: [paciente_id], references: [id])
+  medicos                 medicos?              @relation(fields: [medico_id], references: [id])
+  especialidades          especialidades?       @relation(fields: [especialidad_id], references: [id])
+  registro_triage         registros_triage?     @relation(fields: [registro_triage_id], references: [id])
+  enfermero_triage        enfermeros?           @relation("EnfermeroTriage", fields: [enfermero_triage_id], references: [id])
+  nivel_triage            niveles_triage?       @relation(fields: [nivel_triage_id], references: [id])
   
-  cuestionarios           cuestionario_triage[]
+  cuestionario            cuestionario_triage[]
   alertas_criticas        alertas_criticas[]
   alertas_triage          alertas_triage[]
   
@@ -359,6 +366,8 @@ model alertas_criticas {
   escalada        Boolean               @default(false)
   escalada_en     DateTime?             @db.Timestamp(6)
   
+  activa          Boolean               @default(true)
+  
   creado_en       DateTime              @default(now()) @db.Timestamp(6)
   
   turno           turnos                @relation(fields: [turno_id], references: [id])
@@ -370,25 +379,27 @@ model alertas_criticas {
   @@index([hospital_id, confirmada, creado_en], map: "idx_alertas_criticas_hospital")
   @@index([turno_id], map: "idx_alertas_criticas_turno")
   @@index([tipo_alerta, confirmada], map: "idx_alertas_criticas_tipo")
+  @@index([activa, escalada], map: "idx_alertas_criticas_activa")
 }
 
 model alertas_triage {
-  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  turno_id        String      @db.Uuid
-  hospital_id     Int
-  tipo_alerta     String      @db.VarChar(50)
-  nivel_severidad String      @db.VarChar(20)
-  mensaje         String
+  id                      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  turno_id                String      @db.Uuid
+  hospital_id             Int
+  tipo_alerta             String      @db.VarChar(50)
+  nivel_severidad         String      @db.VarChar(20)
+  mensaje                 String
+  tiempo_excedido_minutos Int?        @db.SmallInt
   
-  resuelta        Boolean     @default(false)
-  resuelta_por    String?     @db.Uuid
-  resuelta_en     DateTime?   @db.Timestamp(6)
+  resuelta                Boolean     @default(false)
+  resuelta_por            String?     @db.Uuid
+  resuelta_en             DateTime?   @db.Timestamp(6)
   
-  creado_en       DateTime    @default(now()) @db.Timestamp(6)
+  creado_en               DateTime    @default(now()) @db.Timestamp(6)
   
-  turno           turnos      @relation(fields: [turno_id], references: [id])
-  hospital        hospitales  @relation(fields: [hospital_id], references: [id])
-  resuelto        usuarios?   @relation(fields: [resuelta_por], references: [id])
+  turno                   turnos      @relation(fields: [turno_id], references: [id])
+  hospital                hospitales  @relation(fields: [hospital_id], references: [id])
+  resuelto                usuarios?   @relation(fields: [resuelta_por], references: [id])
   
   @@index([hospital_id, resuelta, creado_en], map: "idx_alertas_hospital")
   @@index([turno_id], map: "idx_alertas_turno")
