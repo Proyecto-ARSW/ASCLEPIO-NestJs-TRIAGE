@@ -11,6 +11,7 @@ import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
 import { RegistroTriage, TipoEvaluacion } from '../entities/registro-triage.entity';
 import { Inject } from '@nestjs/common';
 import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
+import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 
 @Injectable()
 export class VitalesService {
@@ -23,6 +24,7 @@ export class VitalesService {
     private readonly turnoService: TurnoService,
     @Inject(TriageGateway)
     private readonly triageGateway: TriageGateway,
+    private readonly eventPublisher: TriageEventPublisher,
   ) {}
 
   /**
@@ -147,8 +149,25 @@ export class VitalesService {
       cuestionario.hospital_id,
     );
 
-    // 10. TODO: Publicar evento RabbitMQ
-    // this.eventPublisher.publish('triage.vitales.registrados', ...)
+    await this.eventPublisher.publishVitalesRegistrados({
+      turno_id: dto.turno_id,
+      registro_triage_id: registroTriage.id,
+      cuestionario_id: dto.cuestionario_id,
+      paciente_id: dto.paciente_id,
+      hospital_id: cuestionario.hospital_id,
+      enfermero_id: dto.enfermero_id,
+      nivel_sugerido_ia: resultadoClasificador.nivel_sugerido,
+      confianza_ia: resultadoClasificador.confianza,
+      vitales: {
+        presion_sistolica: dto.presion_sistolica,
+        presion_diastolica: dto.presion_diastolica,
+        frecuencia_cardiaca: dto.frecuencia_cardiaca,
+        frecuencia_respiratoria: dto.frecuencia_respiratoria,
+        temperatura: dto.temperatura,
+        saturacion_oxigeno: dto.saturacion_oxigeno,
+      },
+      alertas_vitales: alertasCriticas,
+    });
 
     return {
       registro_triage: registroTriage as RegistroTriage,

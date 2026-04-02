@@ -41,9 +41,9 @@ export abstract class BaseConsumer implements OnModuleInit {
         durable: true,
       });
 
-      this.logger.log(`✅ Consumer RabbitMQ conectado - Exchange: ${this.exchange}`);
+      this.logger.log(`Consumer RabbitMQ conectado - Exchange: ${this.exchange}`);
     } catch (error) {
-      this.logger.error(`❌ Error conectando consumer RabbitMQ: ${error.message}`);
+      this.logger.error(`Error conectando consumer RabbitMQ: ${error.message}`);
       throw error;
     }
   }
@@ -76,10 +76,10 @@ export abstract class BaseConsumer implements OnModuleInit {
       
       for (const routingKey of routingKeys) {
         await this.channel.bindQueue(this.queue, this.exchange, routingKey);
-        this.logger.log(`✅ Queue bound: ${this.queue} → ${routingKey}`);
+        this.logger.log(`Queue bound: ${this.queue} → ${routingKey}`);
       }
     } catch (error) {
-      this.logger.error(`❌ Error configurando queue: ${error.message}`);
+      this.logger.error(`Error configurando queue: ${error.message}`);
       throw error;
     }
   }
@@ -106,7 +106,7 @@ export abstract class BaseConsumer implements OnModuleInit {
             const event: BaseEvent = JSON.parse(content);
 
             this.logger.debug(
-              `📥 Evento recibido: ${event.event_type} - ID: ${event.event_id}`,
+              `Evento recibido: ${event.event_type} - ID: ${event.event_id}`,
             );
 
             // Procesar evento (implementado por subclases)
@@ -115,7 +115,7 @@ export abstract class BaseConsumer implements OnModuleInit {
             // ACK: Mensaje procesado exitosamente
             this.channel.ack(msg);
 
-            this.logger.debug(`✅ Evento procesado: ${event.event_type}`);
+            this.logger.debug(`Evento procesado: ${event.event_type}`);
           } catch (error) {
             this.logger.error(
               `❌ Error procesando mensaje: ${error.message}`,
@@ -127,7 +127,7 @@ export abstract class BaseConsumer implements OnModuleInit {
             this.channel.nack(msg, false, requeue);
 
             if (!requeue) {
-              this.logger.warn(`⚠️ Mensaje enviado a Dead Letter Queue`);
+              this.logger.warn(`Mensaje enviado a Dead Letter Queue`);
             }
           }
         },

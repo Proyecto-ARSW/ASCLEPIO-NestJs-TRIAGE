@@ -11,6 +11,7 @@ import { ConfirmacionEnfermero } from '../entities/confirmacion-enfermero.entity
 import { ColaService } from '@/modules/cola/services/cola.service';
 import { Inject } from '@nestjs/common';
 import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
+import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 
 @Injectable()
 export class ConfirmacionService {
@@ -23,6 +24,7 @@ export class ConfirmacionService {
     private readonly colaService: ColaService,
     @Inject(TriageGateway)
     private readonly triageGateway: TriageGateway,
+    private readonly eventPublisher: TriageEventPublisher,
   ) {}
 
   /**
@@ -144,8 +146,19 @@ export class ConfirmacionService {
       registroTriage.hospital_id,
     );
 
-    // 12. TODO: Publicar evento RabbitMQ
-    // this.eventPublisher.publish('triage.confirmado', ...)
+    await this.eventPublisher.publishTriageConfirmado({
+      turno_id: dto.turno_id,
+      confirmacion_id: confirmacion.id,
+      registro_triage_id: dto.registro_triage_id,
+      paciente_id: registroTriage.paciente_id,
+      hospital_id: registroTriage.hospital_id,
+      enfermero_id: dto.enfermero_id,
+      nivel_sugerido_ollama: registroTriage.nivel_sugerido_ia,
+      nivel_final_enfermero: dto.nivel_final_enfermero,
+      acepto_sugerencia: dto.acepto_sugerencia,
+      razon_modificacion: dto.razon_modificacion,
+      posicion_cola: posicionCola + 1,
+    });
 
     return {
       confirmacion: confirmacion as ConfirmacionEnfermero,

@@ -10,6 +10,7 @@ import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
 import { CuestionarioTriage } from '../entities/cuestionario-triage.entity';
 import { Inject } from '@nestjs/common';
 import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
+import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher'
 
 @Injectable()
 export class CuestionarioTriageService {
@@ -21,6 +22,7 @@ export class CuestionarioTriageService {
     private readonly turnoService: TurnoService,
     @Inject(TriageGateway)
     private readonly triageGateway: TriageGateway,
+    private readonly eventPublisher: TriageEventPublisher,
   ) {}
 
   /**
@@ -124,8 +126,16 @@ export class CuestionarioTriageService {
       dto.hospital_id,
     );
 
-    // 8. TODO: Publicar evento RabbitMQ
-    // this.eventPublisher.publish('triage.cuestionario.completado', ...)
+    await this.eventPublisher.publishCuestionarioCompletado({
+      turno_id: dto.turno_id,
+      cuestionario_id: cuestionario.id,
+      paciente_id: dto.paciente_id,
+      hospital_id: dto.hospital_id,
+      categoria_molestia: dto.categoria,
+      nivel_preliminar: resultadoIA.nivel_sugerido,
+      requirio_ollama: requirioOllama,
+      sintomas_detectados: resultadoIA.sintomas_detectados,
+    });
 
     return {
       cuestionario: cuestionario as CuestionarioTriage,

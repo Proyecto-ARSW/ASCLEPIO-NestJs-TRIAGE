@@ -7,6 +7,7 @@ import { ConfirmarAlertaDto } from '../dto/confirmar-alerta.dto';
 import { AlertaResponse } from '../dto/alerta-response.dto';
 import { AlertaCritica, TipoAlerta } from '../entities/alerta-critica.entity';
 import { RedisService } from '@/modules/cola/services/redis.service';
+import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 
 @Injectable()
 export class AlertaCriticaService {
@@ -15,6 +16,7 @@ export class AlertaCriticaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly eventPublisher: TriageEventPublisher,
   ) {}
 
   /**
@@ -76,7 +78,15 @@ export class AlertaCriticaService {
     );
 
     // 5. TODO: Emitir GraphQL Subscription (se hace en resolver)
-    // 6. TODO: Publicar evento RabbitMQ
+    await this.eventPublisher.publishAlertaCritica({
+      alerta_id: alerta.id,
+      turno_id: dto.turno_id,
+      hospital_id: dto.hospital_id,
+      paciente_id: alerta.turnos.paciente_id,
+      nivel_triage: dto.nivel_triage,
+      tipo_alerta: dto.tipo_alerta,
+      medico_asignado_id: dto.medico_asignado_id,
+    });
 
     return {
       alerta: alerta as AlertaCritica,

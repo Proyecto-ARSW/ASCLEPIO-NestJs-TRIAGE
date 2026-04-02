@@ -16,6 +16,7 @@ import { TipoTurno, EstadoTurno, Turno } from '../entities/turno.entity';
 import { ColaService } from '@/modules/cola/services/cola.service';
 import { Inject } from '@nestjs/common';
 import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
+import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 
 @Injectable()
 export class TurnoService {
@@ -27,6 +28,7 @@ export class TurnoService {
     private readonly colaService: ColaService,
     @Inject(TriageGateway)
     private readonly triageGateway: TriageGateway,
+    private readonly eventPublisher: TriageEventPublisher,
   ) {}
 
   /**
@@ -84,6 +86,16 @@ export class TurnoService {
           estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
           timestamp: new Date().toISOString(),
         });
+
+    await this.eventPublisher.publishTurnoCreado({
+      turno_id: turno.id,
+      numero_turno: numeroTurno,
+      hospital_id: dto.hospital_id,
+      paciente_id: dto.paciente_id,
+      tipo_turno: TipoTurno.URGENCIA,
+      estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+      fecha: new Date().toISOString(),
+    });
 
     return turno as Turno;
   }
@@ -242,6 +254,20 @@ export class TurnoService {
       turno.hospital_id,
     );
 
+    const tiempoEsperaMs = new Date().getTime() - turno.creado_en.getTime();
+    const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
+
+    await this.eventPublisher.publishPacienteLlamado({
+      turno_id: turno.id,
+      numero_turno: turno.numero_turno,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      medico_id: dto.medico_id,
+      consultorio: dto.consultorio,
+      nivel_triage: turno.nivel_triage_id,
+      tiempo_espera_minutos: tiempoEsperaMin,
+    });
+
     return turnoActualizado as Turno;
   }
 
@@ -256,6 +282,12 @@ export class TurnoService {
       );
     }
 
+    const tiempoEsperaMs = (turno.llamado_en || new Date()).getTime() - turno.creado_en.getTime();
+    const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
+
+    const tiempoAtencionMs = Date.now() - (turno.llamado_en || new Date()).getTime();
+    const tiempoAtencionMin = Math.floor(tiempoAtencionMs / 60000);
+
     const turnoActualizado = await this.prisma.turnos.update({
       where: { id },
       data: {
@@ -264,6 +296,21 @@ export class TurnoService {
         finalizado_en: new Date(),
       },
     });
+    await this.eventPublisher.publishPacienteAtendido({
+      turno_id: turno.id,
+      numero_turno: turno.numero_turno,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      medico_id: dto.medico_id,
+      nivel_triage: turno.nivel_triage_id || 0,
+      tiempo_espera_minutos: tiempoEsperaMin,
+      tiempo_atencion_minutos: tiempoAtencionMin,
+      diagnostico: dto.diagnostico,
+      tratamiento: dto.tratamiento,
+      observaciones: dto.observaciones,
+    });
+
+    this.logger.log(`Turno finalizado: ${id}`);
 
     // Crear registro en historial médico (esto debería estar en otro módulo)
     // Por ello se deja comentado.
@@ -296,6 +343,12 @@ export class TurnoService {
       data: {
         estado: EstadoTurno.CANCELADO,
       },
+    });
+
+   await this.eventPublisher.publishTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      razon: 'Cancelado por usuario',
     });
 
     this.logger.log(`Turno cancelado: ${id}`);

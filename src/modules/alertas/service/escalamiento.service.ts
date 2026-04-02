@@ -6,6 +6,7 @@ import { AlertaCriticaService } from './alerta-critica.service';
 import { EscalarAlertaDto } from '../dto/escalar-alerta.dto';
 import { AlertaCritica, TipoAlerta } from '../entities/alerta-critica.entity';
 import { RedisService } from '@/modules/cola/services/redis.service';
+import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 
 @Injectable()
 export class EscalamientoService {
@@ -15,6 +16,7 @@ export class EscalamientoService {
     private readonly prisma: PrismaService,
     private readonly alertaCriticaService: AlertaCriticaService,
     private readonly redis: RedisService,
+    private readonly eventPublisher: TriageEventPublisher,
   ) {}
 
   /**
@@ -56,9 +58,14 @@ export class EscalamientoService {
 
     this.logger.log(`Alerta escalada a jefe de guardia`);
 
-    await this.publicarAlertaEscalada(alertaEscalada);
-
-    // TODO: Enviar notificación push/email al jefe de guardia
+    await this.eventPublisher.publishAlertaEscalada({
+      alerta_id: alertaEscalada.id,
+      turno_id: alertaEscalada.turno_id,
+      hospital_id: alertaEscalada.hospital_id,
+      jefe_guardia_id: dto.jefe_guardia_id,
+      razon_escalamiento: dto.razon_escalamiento,
+      tiempo_sin_confirmar_min: alerta.tiempo_sin_confirmar_min,
+    });
 
     return alertaEscalada as AlertaCritica;
   }
