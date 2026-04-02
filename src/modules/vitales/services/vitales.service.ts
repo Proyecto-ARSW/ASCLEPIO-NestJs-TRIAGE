@@ -9,6 +9,8 @@ import { CuestionarioTriageService } from '@/modules/cuestionario/services/cuest
 import { TurnoService } from '@/modules/turnos/services/turno.service';
 import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
 import { RegistroTriage, TipoEvaluacion } from '../entities/registro-triage.entity';
+import { Inject } from '@nestjs/common';
+import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 
 @Injectable()
 export class VitalesService {
@@ -19,6 +21,8 @@ export class VitalesService {
     private readonly classifierGateway: ClassifierGatewayService,
     private readonly cuestionarioService: CuestionarioTriageService,
     private readonly turnoService: TurnoService,
+    @Inject(TriageGateway)
+    private readonly triageGateway: TriageGateway,
   ) {}
 
   /**
@@ -27,7 +31,7 @@ export class VitalesService {
    */
   async registrarVitalesYEvaluar(dto: RegistrarVitalesDto): Promise<VitalesResponse> {
     this.logger.log(
-      `🩺 Registrando vitales - Turno: ${dto.turno_id}`,
+      `Registrando vitales - Turno: ${dto.turno_id}`,
     );
 
     const turno = await this.turnoService.obtenerPorId(dto.turno_id);
@@ -56,7 +60,7 @@ export class VitalesService {
     }
 
     const edad = this.calcularEdad(paciente.fecha_nacimiento);
-    const sexo = 'M'; // TODO: Agregar campo sexo a la tabla pacientes
+    const sexo = 'M'; // NOTA: Agregar campo sexo a la tabla pacientes
 
     this.logger.debug(
       `Contexto del paciente - Edad: ${edad}, Sexo: ${sexo}`,
@@ -131,8 +135,17 @@ export class VitalesService {
       );
     }
 
-    // 9. TODO: Emitir evento WebSocket
-    // this.triageGateway.emitVitalesRegistrados(...)
+    this.triageGateway.emitVitalesRegistrados(
+      {
+        turno_id: dto.turno_id,
+        registro_triage_id: registroTriage.id,
+        nivel_sugerido: resultadoClasificador.nivel_sugerido,
+        confianza: resultadoClasificador.confianza,
+        alertas_vitales: alertasCriticas,
+        timestamp: new Date().toISOString(),
+      },
+      cuestionario.hospital_id,
+    );
 
     // 10. TODO: Publicar evento RabbitMQ
     // this.eventPublisher.publish('triage.vitales.registrados', ...)

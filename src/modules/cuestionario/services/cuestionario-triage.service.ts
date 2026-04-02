@@ -8,6 +8,8 @@ import { OllamaGatewayService } from './ollama-gateway.service';
 import { TurnoService } from '@/modules/turnos/services/turno.service';
 import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
 import { CuestionarioTriage } from '../entities/cuestionario-triage.entity';
+import { Inject } from '@nestjs/common';
+import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 
 @Injectable()
 export class CuestionarioTriageService {
@@ -17,6 +19,8 @@ export class CuestionarioTriageService {
     private readonly prisma: PrismaService,
     private readonly ollamaGateway: OllamaGatewayService,
     private readonly turnoService: TurnoService,
+    @Inject(TriageGateway)
+    private readonly triageGateway: TriageGateway,
   ) {}
 
   /**
@@ -71,7 +75,6 @@ export class CuestionarioTriageService {
       requirioOllama = resultadoIA.requirio_ollama;
     }
 
-    // 4. Guardar cuestionario en BD
     const cuestionario = await this.prisma.cuestionario_triage.create({
       data: {
         paciente_id: dto.paciente_id,
@@ -93,7 +96,6 @@ export class CuestionarioTriageService {
 
     this.logger.log(`Cuestionario guardado: ${cuestionario.id}`);
 
-    // 5. Actualizar estado del turno
     await this.turnoService.actualizarEstado(dto.turno_id, {
       estado: EstadoTurno.ESPERANDO_VITALES,
     });
@@ -102,7 +104,6 @@ export class CuestionarioTriageService {
       `Turno actualizado a ESPERANDO_VITALES - Nivel preliminar: ${resultadoIA.nivel_sugerido}`,
     );
 
-    // 6. Determinar si es alerta crítica (nivel 1)
     const alertaCritica = resultadoIA.nivel_sugerido === 1;
 
     if (alertaCritica) {
@@ -112,8 +113,16 @@ export class CuestionarioTriageService {
       // TODO: Crear alerta crítica (se implementará en módulo de alertas)
     }
 
-    // 7. TODO: Emitir evento WebSocket
-    // this.triageGateway.emitCuestionarioCompletado(...)
+    this.triageGateway.emitCuestionarioCompletado(
+      {
+        turno_id: dto.turno_id,
+        cuestionario_id: cuestionario.id,
+        nivel_preliminar: resultadoIA.nivel_sugerido,
+        requirio_ollama: requirioOllama,
+        timestamp: new Date().toISOString(),
+      },
+      dto.hospital_id,
+    );
 
     // 8. TODO: Publicar evento RabbitMQ
     // this.eventPublisher.publish('triage.cuestionario.completado', ...)

@@ -14,6 +14,8 @@ import { FinalizarTurnoDto } from '../dto/finalizar-turno.dto';
 import { GeneradorNumeroService } from './generador-numero.service';
 import { TipoTurno, EstadoTurno, Turno } from '../entities/turno.entity';
 import { ColaService } from '@/modules/cola/services/cola.service';
+import { Inject } from '@nestjs/common';
+import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 
 @Injectable()
 export class TurnoService {
@@ -23,6 +25,8 @@ export class TurnoService {
     private readonly prisma: PrismaService,
     private readonly generadorNumero: GeneradorNumeroService,
     private readonly colaService: ColaService,
+    @Inject(TriageGateway)
+    private readonly triageGateway: TriageGateway,
   ) {}
 
   /**
@@ -72,6 +76,14 @@ export class TurnoService {
     this.logger.log(
       `Turno creado: ${turno.id} - Número: ${numeroTurno} - Hospital: ${hospital.nombre}`,
     );
+    this.triageGateway.emitTurnoCreado({
+          turno_id: turno.id,
+          numero_turno: numeroTurno,
+          hospital_id: dto.hospital_id,
+          paciente_nombre: `${turno.pacientes.usuarios.nombre} ${turno.pacientes.usuarios.apellido}`,
+          estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+          timestamp: new Date().toISOString(),
+        });
 
     return turno as Turno;
   }
@@ -209,6 +221,25 @@ export class TurnoService {
 
     this.logger.log(
       `Paciente llamado: Turno ${turno.numero_turno} - Consultorio: ${dto.consultorio}`,
+    );
+
+    const medico = await this.prisma.medicos.findUnique({
+      where: { id: dto.medico_id },
+      include: { usuarios: true },
+    });
+
+    this.triageGateway.emitPacienteLlamado(
+      {
+        turno_id: turno.id,
+        numero_turno: turno.numero_turno,
+        paciente_nombre: turno.pacientes.usuarios.nombre,
+        paciente_apellido: turno.pacientes.usuarios.apellido,
+        consultorio: dto.consultorio,
+        medico_nombre: `${medico.usuarios.nombre} ${medico.usuarios.apellido}`,
+        nivel_triage: turno.nivel_triage_id,
+        timestamp: new Date().toISOString(),
+      },
+      turno.hospital_id,
     );
 
     return turnoActualizado as Turno;

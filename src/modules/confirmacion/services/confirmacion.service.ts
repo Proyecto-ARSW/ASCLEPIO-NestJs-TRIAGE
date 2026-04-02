@@ -9,6 +9,8 @@ import { VitalesService } from '@/modules/vitales/services/vitales.service';
 import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
 import { ConfirmacionEnfermero } from '../entities/confirmacion-enfermero.entity';
 import { ColaService } from '@/modules/cola/services/cola.service';
+import { Inject } from '@nestjs/common';
+import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 
 @Injectable()
 export class ConfirmacionService {
@@ -19,6 +21,8 @@ export class ConfirmacionService {
     private readonly turnoService: TurnoService,
     private readonly vitalesService: VitalesService,
     private readonly colaService: ColaService,
+    @Inject(TriageGateway)
+    private readonly triageGateway: TriageGateway,
   ) {}
 
   /**
@@ -105,6 +109,10 @@ export class ConfirmacionService {
     );
     this.logger.log(`Turno agregado a cola - Posición: ${posicionCola + 1}`);
 
+    if (!dto.acepto_sugerencia) {
+      const diferencia = Math.abs(
+        dto.nivel_final_enfermero - registroTriage.nivel_sugerido_ia,
+      );
       const tipoModificacion =
         dto.nivel_final_enfermero < registroTriage.nivel_sugerido_ia
           ? 'ESCALAMIENTO'
@@ -124,8 +132,17 @@ export class ConfirmacionService {
       // TODO: Crear alerta crítica en módulo de alertas
     }
 
-    // 11. TODO: Emitir evento WebSocket
-    // this.triageGateway.emitTriageConfirmado(...)
+    this.triageGateway.emitTriageConfirmado(
+      {
+        turno_id: dto.turno_id,
+        confirmacion_id: confirmacion.id,
+        nivel_final: dto.nivel_final_enfermero,
+        acepto_sugerencia: dto.acepto_sugerencia,
+        posicion_cola: posicionCola + 1,
+        timestamp: new Date().toISOString(),
+      },
+      registroTriage.hospital_id,
+    );
 
     // 12. TODO: Publicar evento RabbitMQ
     // this.eventPublisher.publish('triage.confirmado', ...)
