@@ -81,7 +81,7 @@ model pacientes {
   alergias              String?
   creado_en             DateTime                @default(now()) @db.Timestamp(6)
   
-  cuestionario_triage   cuestionario_triage[]
+  evaluaciones_preliminares   evaluaciones_preliminares[]
   registros_triage      registros_triage[]
   turnos                turnos[]
 }
@@ -104,7 +104,7 @@ model hospitales {
   creado_en           DateTime              @default(now()) @db.Timestamp(6)
   actualizado_en      DateTime              @default(now()) @db.Timestamp(6)
   
-  cuestionario_triage cuestionario_triage[]
+  evaluaciones_preliminares   evaluaciones_preliminares[]
   registros_triage    registros_triage[]
   turnos              turnos[]
   alertas_criticas    alertas_criticas[]
@@ -195,111 +195,209 @@ model niveles_triage {
   alertas_criticas        alertas_criticas[]
 }
 
-model cuestionario_triage {
-  id                              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  paciente_id                     String            @db.Uuid
-  hospital_id                     Int
-  turno_id                        String            @db.Uuid
+// ============================================
+// TABLA: evaluaciones_preliminares
+// ============================================
+
+model evaluaciones_preliminares {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paciente_id             String            @db.Uuid
+  hospital_id             Int
+  turno_id                String            @db.Uuid
   
-  categoria_molestia              String            @db.VarChar(50)
-  respuestas                      Json              // Array de {pregunta_id, pregunta, valor, texto}
-  score_total                     Int               @db.SmallInt
-  score_max                       Int               @db.SmallInt
-  motivo_texto_libre              String?
+  // ============================================
+  // DATOS EXTRAÍDOS POR OLLAMA
+  // ============================================
+  sintomas                String[]          // triage_data.sintomas
+  embarazo                Boolean           @default(false) // triage_data.embarazo
+  antecedentes            String[]          // triage_data.antecedentes
+  posibles_causas         String[]          // triage_data.posiblesCausas
   
-  nivel_sugerido_ia_preliminar    Int?
-  confianza_ia_preliminar         Decimal?          @db.Decimal(5, 4)
-  sintomas_detectados_ia          String[]
-  razon_clinica_ia                String?
+  // ============================================
+  // EVALUACIÓN DE OLLAMA
+  // ============================================
+  nivel_prioridad         Int               @db.SmallInt // triage_data.nivelPrioridad (1-5)
+  comentario_paciente     String?           // triage_data.comentario
+  comentarios_ia          String?           // triage_data.comentariosIA
+  advertencia_ia          String?           @default("Contenido generado con IA; puede contener errores.") // triage_data.advertenciaIA
   
-  tiempo_llenado_ms               Int?
-  requirio_ollama                 Boolean           @default(false)
+  // ============================================
+  // METADATOS DE OLLAMA
+  // ============================================
+  confidence_score        Decimal?          @db.Decimal(5, 4) // confidence_score
+  procedure_id            String?           @db.VarChar(100) // procedure_id (ID de Ollama)
+  status                  String?           @db.VarChar(50) // status del procedimiento
   
-  creado_en                       DateTime          @default(now()) @db.Timestamp(6)
+  creado_en               DateTime          @default(now()) @db.Timestamp(6)
+  actualizado_en          DateTime          @default(now()) @db.Timestamp(6)
   
-  pacientes                       pacientes         @relation(fields: [paciente_id], references: [id])
-  hospitales                      hospitales        @relation(fields: [hospital_id], references: [id])
-  turnos                          turnos            @relation(fields: [turno_id], references: [id])
-  nivel_preliminar                niveles_triage?   @relation("NivelPreliminar", fields: [nivel_sugerido_ia_preliminar], references: [id])
+  // ============================================
+  // RELACIONES
+  // ============================================
+  pacientes               pacientes         @relation(fields: [paciente_id], references: [id])
+  hospitales              hospitales        @relation(fields: [hospital_id], references: [id])
+  turnos                  turnos            @relation(fields: [turno_id], references: [id])
   
-  registros_triage                registros_triage[]
+  registros_triage        registros_triage[]
   
-  @@index([paciente_id], map: "idx_cuestionario_paciente")
-  @@index([turno_id], map: "idx_cuestionario_turno")
-  @@index([hospital_id, creado_en], map: "idx_cuestionario_hospital")
+  // ============================================
+  // ÍNDICES
+  // ============================================
+  @@index([paciente_id], map: "idx_evaluaciones_paciente")
+  @@index([turno_id], map: "idx_evaluaciones_turno")
+  @@index([hospital_id, nivel_prioridad, creado_en], map: "idx_evaluaciones_prioridad")
+  @@index([nivel_prioridad, creado_en], map: "idx_evaluaciones_cola")
+  @@index([embarazo], map: "idx_evaluaciones_embarazo")
+  @@index([procedure_id], map: "idx_evaluaciones_procedure")
 }
 
+// ============================================
+// TABLA: registros_triage (ACTUALIZADA)
+// ============================================
+
 model registros_triage {
-  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  paciente_id             String                    @db.Uuid
-  hospital_id             Int
-  enfermero_id            String                    @db.Uuid
-  cuestionario_id         String?                   @db.Uuid
+  id                        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paciente_id               String                    @db.Uuid
+  hospital_id               Int
+  enfermero_id              String                    @db.Uuid
+  evaluacion_preliminar_id  String                    @db.Uuid
   
-  nivel_triage_id         Int?
-  nivel_sugerido_ia       Int?
-  confianza_ia            Decimal?                  @db.Decimal(5, 4)
+  // ============================================
+  // SIGNOS VITALES (del enfermero)
+  // ============================================
+  presion_sistolica         Int                       @db.SmallInt
+  presion_diastolica        Int                       @db.SmallInt
+  frecuencia_cardiaca       Int                       @db.SmallInt
+  frecuencia_respiratoria   Int                       @db.SmallInt
+  temperatura               Decimal                   @db.Decimal(4, 2)
+  saturacion_oxigeno        Int                       @db.SmallInt
+  peso_kg                   Decimal?                  @db.Decimal(5, 2)
+  altura_cm                 Int?                      @db.SmallInt
   
-  motivo_consulta         String
-  sintomas                String?
-  presion_sistolica       Int?                      @db.SmallInt
-  presion_diastolica      Int?                      @db.SmallInt
-  frecuencia_cardiaca     Int?                      @db.SmallInt
-  frecuencia_respiratoria Int?                      @db.SmallInt
-  temperatura             Decimal?                  @db.Decimal(4, 2)
-  saturacion_oxigeno      Int?                      @db.SmallInt
+  // ============================================
+  // CLASIFICACIÓN DE IA (Random Forest)
+  // ============================================
+  nivel_triage_id           Int?                      // Nivel FINAL (después de confirmación enfermero)
+  nivel_sugerido_ia         Int                       // Nivel sugerido por Random Forest
+  confianza_ia              Decimal                   @db.Decimal(5, 4)
+  comentarios_ia            String?                   // Justificación del Random Forest
   
-  observaciones           String?
-  tipo_evaluacion         tipo_evaluacion           @default(FINAL)
-  tiempo_registro_ms      Int?
-  es_reclasificacion      Boolean                   @default(false)
-  triage_original_id      String?                   @db.Uuid
+  // ============================================
+  // PROBABILIDADES DEL RANDOM FOREST
+  // ============================================
+  probabilidad_nivel_1      Decimal?                  @db.Decimal(5, 4)
+  probabilidad_nivel_2      Decimal?                  @db.Decimal(5, 4)
+  probabilidad_nivel_3      Decimal?                  @db.Decimal(5, 4)
+  probabilidad_nivel_4      Decimal?                  @db.Decimal(5, 4)
+  probabilidad_nivel_5      Decimal?                  @db.Decimal(5, 4)
   
-  creado_en               DateTime                  @default(now()) @db.Timestamp(6)
+  // ============================================
+  // FEATURES IMPORTANTES (ML Interpretability)
+  // ============================================
+  feature_mas_importante    String?                   @db.VarChar(100) // Ej: "presion_sistolica"
+  valor_feature_importante  Decimal?                  @db.Decimal(10, 4)
   
-  pacientes               pacientes                 @relation(fields: [paciente_id], references: [id])
-  hospitales              hospitales                @relation(fields: [hospital_id], references: [id])
-  enfermeros              enfermeros                @relation(fields: [enfermero_id], references: [id])
-  cuestionario            cuestionario_triage?      @relation(fields: [cuestionario_id], references: [id])
-  nivel_triage            niveles_triage?           @relation("NivelTriage", fields: [nivel_triage_id], references: [id])
-  nivel_sugerido          niveles_triage?           @relation("NivelSugerido", fields: [nivel_sugerido_ia], references: [id])
-  triage_original         registros_triage?         @relation("TriageReclasificacion", fields: [triage_original_id], references: [id])
+  // ============================================
+  // CAMPOS CALCULADOS (guardados para auditoría)
+  // ============================================
+  presion_arterial_media    Decimal?                  @db.Decimal(5, 2) // PAM = (sist + 2*diast) / 3
+  shock_index               Decimal?                  @db.Decimal(4, 2) // SI = FC / PA_sist
+  tiene_alertas_vitales     Boolean                   @default(false)   // true si PAM<65, SI>1.0, SpO2<92
   
-  reclasificaciones       registros_triage[]        @relation("TriageReclasificacion")
-  confirmaciones          confirmaciones_enfermero[]
-  turnos                  turnos[]
+  // ============================================
+  // OBSERVACIONES
+  // ============================================
+  motivo_consulta           String                    // Resumen breve
+  sintomas_observados       String?                   // Síntomas adicionales que observó el enfermero
+  observaciones             String?                   // Notas libres del enfermero
   
+  // ============================================
+  // METADATOS
+  // ============================================
+  tiempo_registro_ms        Int?                      // Tiempo que tardó el enfermero
+  es_reclasificacion        Boolean                   @default(false)
+  triage_original_id        String?                   @db.Uuid
+  
+  creado_en                 DateTime                  @default(now()) @db.Timestamp(6)
+  
+  // ============================================
+  // RELACIONES
+  // ============================================
+  pacientes                 pacientes                 @relation(fields: [paciente_id], references: [id])
+  hospitales                hospitales                @relation(fields: [hospital_id], references: [id])
+  enfermeros                enfermeros                @relation(fields: [enfermero_id], references: [id])
+  evaluacion_preliminar     evaluaciones_preliminares @relation(fields: [evaluacion_preliminar_id], references: [id])
+  nivel_triage              niveles_triage?           @relation("NivelTriage", fields: [nivel_triage_id], references: [id])
+  nivel_sugerido            niveles_triage?           @relation("NivelSugerido", fields: [nivel_sugerido_ia], references: [id])
+  triage_original           registros_triage?         @relation("TriageReclasificacion", fields: [triage_original_id], references: [id])
+  
+  reclasificaciones         registros_triage[]        @relation("TriageReclasificacion")
+  confirmaciones            confirmaciones_enfermero[]
+  turnos                    turnos[]
+  
+  // ============================================
+  // ÍNDICES
+  // ============================================
   @@index([paciente_id], map: "idx_registros_triage_paciente")
   @@index([hospital_id], map: "idx_registros_triage_hospital")
   @@index([enfermero_id], map: "idx_registros_triage_enfermero")
+  @@index([evaluacion_preliminar_id], map: "idx_registros_evaluacion")
   @@index([creado_en], map: "idx_registros_triage_fecha")
   @@index([nivel_triage_id], map: "idx_registros_triage_nivel")
-  @@index([cuestionario_id], map: "idx_registros_cuestionario")
+  @@index([nivel_sugerido_ia], map: "idx_registros_nivel_sugerido")
+  @@index([presion_sistolica], map: "idx_registros_presion")
+  @@index([tiene_alertas_vitales], map: "idx_registros_alertas")
 }
+
+// ============================================
+// TABLA: confirmaciones_enfermero (ACTUALIZADA)
+// ============================================
 
 model confirmaciones_enfermero {
   id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   registro_triage_id      String            @db.Uuid
   enfermero_id            String            @db.Uuid
   
-  nivel_sugerido_ollama   Int
-  nivel_final_enfermero   Int
+  // ============================================
+  // NIVELES
+  // ============================================
+  nivel_sugerido_ia       Int               // Nivel sugerido por Random Forest
+  nivel_final_enfermero   Int               // Nivel decidido por enfermero
   
-  acepto_sugerencia       Boolean
-  razon_modificacion      String?
+  // ============================================
+  // DECISIÓN
+  // ============================================
+  acepto_sugerencia       Boolean           // true si nivel_ia == nivel_enfermero
+  razon_modificacion      String?           // Si modificó, por qué
   
-  tiempo_confirmacion_ms  Int?
+  // ============================================
+  // TIPO DE MODIFICACIÓN (para métricas)
+  // ============================================
+  tipo_modificacion       String?           @db.VarChar(20) // 'ESCALAMIENTO', 'DEGRADACION', null
+  diferencia_niveles      Int?              @db.SmallInt // nivel_final - nivel_sugerido
+  
+  // ============================================
+  // METADATOS
+  // ============================================
+  tiempo_confirmacion_ms  Int?              // Tiempo de revisión
   
   creado_en               DateTime          @default(now()) @db.Timestamp(6)
   
+  // ============================================
+  // RELACIONES
+  // ============================================
   registro_triage         registros_triage  @relation(fields: [registro_triage_id], references: [id])
   enfermero               enfermeros        @relation(fields: [enfermero_id], references: [id])
-  nivel_ollama            niveles_triage    @relation("NivelOllama", fields: [nivel_sugerido_ollama], references: [id])
+  nivel_ia                niveles_triage    @relation("NivelIA", fields: [nivel_sugerido_ia], references: [id])
   nivel_final             niveles_triage    @relation("NivelFinal", fields: [nivel_final_enfermero], references: [id])
   
+  // ============================================
+  // ÍNDICES
+  // ============================================
   @@index([enfermero_id], map: "idx_confirmaciones_enfermero")
   @@index([acepto_sugerencia], map: "idx_confirmaciones_acepto")
   @@index([creado_en], map: "idx_confirmaciones_fecha")
+  @@index([tipo_modificacion], map: "idx_confirmaciones_tipo")
 }
 
 model turnos {
@@ -338,7 +436,7 @@ model turnos {
   enfermero_triage        enfermeros?           @relation("EnfermeroTriage", fields: [enfermero_triage_id], references: [id])
   nivel_triage            niveles_triage?       @relation(fields: [nivel_triage_id], references: [id])
   
-  cuestionario            cuestionario_triage[]
+  evaluaciones            evaluaciones_preliminares[]
   alertas_criticas        alertas_criticas[]
   alertas_triage          alertas_triage[]
   
