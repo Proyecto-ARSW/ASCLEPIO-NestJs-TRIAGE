@@ -1,17 +1,13 @@
-// src/modules/confirmacion/services/confirmacion.service.ts
+// src/modules/confirmacion/confirmacion.service.ts
 
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
-import { ConfirmarTriageDto } from '../dto/confirmar-triage.dto';
-import { ConfirmacionResponse } from '../dto/confirmacion-response.dto';
-import { TurnoService } from '@/modules/turnos/services/turno.service';
-import { VitalesService } from '@/modules/vitales/services/vitales.service';
-import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
-import { ConfirmacionEnfermero } from '../entities/confirmacion-enfermero.entity';
-import { ColaService } from '@/modules/cola/services/cola.service';
-import { Inject } from '@nestjs/common';
-import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
-import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ColaService } from '../cola/cola.service';
+import { AlertaCriticaService } from '../alertas/services/alerta-critica.service';
+import { TriageEventPublisher } from '../eventos/publishers/triage-event.publisher';
+import { TriageGateway } from '../websockets/triage.gateway';
+import { ConfirmarTriageDto } from './dto/confirmar-triage.dto';
+import { ConfirmacionResponseDto } from './dto/confirmacion-response.dto';
 
 @Injectable()
 export class ConfirmacionService {
@@ -19,176 +15,167 @@ export class ConfirmacionService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly turnoService: TurnoService,
-    private readonly vitalesService: VitalesService,
     private readonly colaService: ColaService,
-    @Inject(TriageGateway)
-    private readonly triageGateway: TriageGateway,
+    private readonly alertaService: AlertaCriticaService,
     private readonly eventPublisher: TriageEventPublisher,
+    private readonly triageGateway: TriageGateway,
   ) {}
 
   /**
-   * Confirma o ajusta el nivel de triage sugerido por IA
-   * Paso 15-17 del flujo de triage
+   * Confirma el nivel de triage sugerido por la IA
    */
-  async confirmarTriage(dto: ConfirmarTriageDto): Promise<ConfirmacionResponse> {
-    this.logger.log(
-      `Confirmando triage - Turno: ${dto.turno_id} - Nivel final: ${dto.nivel_final_enfermero}`,
-    );
+  async confirmarTriage(dto: ConfirmarTriageDto): Promise<ConfirmacionResponseDto> {
+    const tiempoInicio = Date.now();
 
-    const turno = await this.turnoService.obtenerPorId(dto.turno_id);
+    this.logger.log(`Confirmando triage - Registro: ${dto.registro_triage_id}`);
 
-    if (turno.estado !== EstadoTurno.TRIAGE_COMPLETO) {
-      throw new BadRequestException(
-        `El turno debe estar en estado TRIAGE_COMPLETO. Estado actual: ${turno.estado}`,
+    // 1. Obtener registro de triage con evaluación preliminar
+    const registro = await this.prisma.registros_triage.findUnique({
+      where: { id: dto.registro_triage_id },
+      include: {
+        evaluacion_preliminar: true,
+        turnos: true,
+      },
+    });
+
+    if (!registro) {
+      throw new NotFoundException(`Registro de triage ${dto.registro_triage_id} no encontrado`);
+    }
+
+    if (registro.nivel_triage_id !== null) {
+      throw new BadRequestException('Este registro de triage ya fue confirmado');
+    }
+
+    const turno = registro.turnos[0];
+    if (!turno) {
+      throw new NotFoundException('No se encontró turno asociado al registro');
+    }
+
+    // 2. Determinar si aceptó la sugerencia
+    const acepto_sugerencia = registro.nivel_sugerido_ia === dto.nivel_final;
+
+    // 3. Calcular tipo de modificación
+    let tipo_modificacion: string | null = null;
+    let diferencia_niveles: number | null = null;
+
+    if (!acepto_sugerencia) {
+      diferencia_niveles = dto.nivel_final - registro.nivel_sugerido_ia;
+      
+      if (dto.nivel_final < registro.nivel_sugerido_ia) {
+        tipo_modificacion = 'ESCALAMIENTO'; // Nivel menor = más urgente
+      } else {
+        tipo_modificacion = 'DEGRADACION'; // Nivel mayor = menos urgente
+      }
+
+      this.logger.log(
+        `Enfermero modificó nivel: ${registro.nivel_sugerido_ia} → ${dto.nivel_final} (${tipo_modificacion})`
       );
     }
 
-    const registroTriage = await this.vitalesService.obtenerPorId(dto.registro_triage_id);
-
-    if (!registroTriage) {
-      throw new NotFoundException('Registro de triage no encontrado');
-    }
-
-    if (!dto.acepto_sugerencia && !dto.razon_modificacion) {
-      throw new BadRequestException(
-        'Debe proporcionar una razón si modifica la sugerencia de la IA',
-      );
-    }
-
-    const cuestionario = registroTriage.cuestionario;
-    const nivelPreliminar = cuestionario?.nivel_sugerido_ia_preliminar;
-
+    // 4. Crear confirmación
     const confirmacion = await this.prisma.confirmaciones_enfermero.create({
       data: {
         registro_triage_id: dto.registro_triage_id,
         enfermero_id: dto.enfermero_id,
-        nivel_sugerido_ia_preliminar: nivelPreliminar,
-        nivel_sugerido_ollama: registroTriage.nivel_sugerido_ia,
-        nivel_final_enfermero: dto.nivel_final_enfermero,
-        acepto_sugerencia: dto.acepto_sugerencia,
-        razon_modificacion: dto.razon_modificacion,
-        tiempo_evaluacion_ms: dto.tiempo_evaluacion_ms,
-      },
-      include: {
-        registro_triage: true,
-        enfermeros: {
-          include: {
-            usuarios: true,
-          },
-        },
+        nivel_sugerido_ia: registro.nivel_sugerido_ia,
+        nivel_final_enfermero: dto.nivel_final,
+        acepto_sugerencia,
+        razon_modificacion: dto.razon_modificacion || null,
+        tipo_modificacion,
+        diferencia_niveles,
+        tiempo_confirmacion_ms: Date.now() - tiempoInicio,
       },
     });
 
-    this.logger.log(`Confirmación guardada: ${confirmacion.id}`);
-
-
+    // 5. Actualizar registro de triage con nivel final
     await this.prisma.registros_triage.update({
       where: { id: dto.registro_triage_id },
       data: {
-        nivel_triage_id: dto.nivel_final_enfermero,
+        nivel_triage_id: dto.nivel_final,
       },
     });
 
+    // 6. Actualizar turno
     await this.prisma.turnos.update({
-      where: { id: dto.turno_id },
+      where: { id: turno.id },
       data: {
-        nivel_triage_id: dto.nivel_final_enfermero,
-        registro_triage_id: dto.registro_triage_id,
-        enfermero_triage_id: dto.enfermero_id,
-        estado: EstadoTurno.EN_ESPERA,
+        estado: 'EN_ESPERA',
+        nivel_triage_id: dto.nivel_final,
+        actualizado_en: new Date(),
       },
+    });
+
+    // 7. Agregar a cola Redis
+    await this.colaService.agregarACola({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      nivel_triage: dto.nivel_final,
+      paciente_id: turno.paciente_id,
+      numero_turno: turno.numero_turno,
     });
 
     this.logger.log(
-      `Turno actualizado a EN_ESPERA - Nivel: ${dto.nivel_final_enfermero}`,
+      `Triage confirmado - Nivel final: ${dto.nivel_final}, En cola: hospital:${turno.hospital_id}:cola:triage:${dto.nivel_final}`
     );
 
-    const posicionCola = await this.colaService.agregarACola(
-      dto.turno_id,
-      registroTriage.hospital_id,
-      dto.nivel_final_enfermero,
-    );
-    this.logger.log(`Turno agregado a cola - Posición: ${posicionCola + 1}`);
-
-    if (!dto.acepto_sugerencia) {
-      const diferencia = Math.abs(
-        dto.nivel_final_enfermero - registroTriage.nivel_sugerido_ia,
-      );
-      const tipoModificacion =
-        dto.nivel_final_enfermero < registroTriage.nivel_sugerido_ia
-          ? 'ESCALAMIENTO'
-          : 'DEGRADACIÓN';
-
-      this.logger.warn(
-        `${tipoModificacion} de nivel - IA: ${registroTriage.nivel_sugerido_ia} → Enfermero: ${dto.nivel_final_enfermero} (Δ${diferencia}) - Razón: ${dto.razon_modificacion}`,
-      );
+    // 8. Si es nivel crítico (1 o 2), crear alerta
+    if (dto.nivel_final <= 2) {
+      await this.alertaService.crearAlertaCritica({
+        turno_id: turno.id,
+        hospital_id: turno.hospital_id,
+        nivel_triage: dto.nivel_final,
+        tipo_alerta: dto.nivel_final === 1 ? 'TRIAGE_CRITICO' : 'TRIAGE_CRITICO',
+      });
     }
 
-    const alertaCritica = dto.nivel_final_enfermero <= 2;
-
-    if (alertaCritica) {
-      this.logger.warn(
-        `ALERTA CRÍTICA - Nivel ${dto.nivel_final_enfermero} confirmado - Turno: ${dto.turno_id}`,
-      );
-      // TODO: Crear alerta crítica en módulo de alertas
-    }
-
-    this.triageGateway.emitTriageConfirmado(
-      {
-        turno_id: dto.turno_id,
-        confirmacion_id: confirmacion.id,
-        nivel_final: dto.nivel_final_enfermero,
-        acepto_sugerencia: dto.acepto_sugerencia,
-        posicion_cola: posicionCola + 1,
-        timestamp: new Date().toISOString(),
-      },
-      registroTriage.hospital_id,
-    );
-
+    // 9. Publicar evento RabbitMQ
     await this.eventPublisher.publishTriageConfirmado({
-      turno_id: dto.turno_id,
       confirmacion_id: confirmacion.id,
-      registro_triage_id: dto.registro_triage_id,
-      paciente_id: registroTriage.paciente_id,
-      hospital_id: registroTriage.hospital_id,
-      enfermero_id: dto.enfermero_id,
-      nivel_sugerido_ollama: registroTriage.nivel_sugerido_ia,
-      nivel_final_enfermero: dto.nivel_final_enfermero,
-      acepto_sugerencia: dto.acepto_sugerencia,
-      razon_modificacion: dto.razon_modificacion,
-      posicion_cola: posicionCola + 1,
+      turno_id: turno.id,
+      nivel_final: dto.nivel_final,
+      acepto_sugerencia,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
     });
 
-    return {
-      confirmacion: confirmacion as ConfirmacionEnfermero,
-      mensaje: alertaCritica
-        ? `Triage confirmado - NIVEL ${dto.nivel_final_enfermero} - PRIORIDAD MÁXIMA`
-        : `Triage confirmado exitosamente - Nivel ${dto.nivel_final_enfermero}`,
-      siguiente_paso: 'EN_ESPERA',
-      posicion_en_cola: posicionCola + 1, // ← ACTUALIZAR (sumar 1 porque es 0-based)
-      alerta_critica: alertaCritica,
-    };
+    // 10. WebSocket
+    this.triageGateway.emitToHospital(turno.hospital_id, 'triage:confirmado', {
+      turno_id: turno.id,
+      numero_turno: turno.numero_turno,
+      nivel_final: dto.nivel_final,
+      acepto_sugerencia,
+    });
+
+    // 11. Actualizar posición en cola vía WebSocket
+    const posicion = await this.colaService.obtenerPosicionEnCola(
+      turno.id,
+      turno.hospital_id,
+      dto.nivel_final
+    );
+
+    this.triageGateway.emitToPaciente(turno.id, 'posicion:actualizada', {
+      turno_id: turno.id,
+      nivel_triage: dto.nivel_final,
+      posicion: posicion.posicion,
+      pacientes_delante: posicion.pacientes_delante,
+    });
+
+    return confirmacion as ConfirmacionResponseDto;
   }
 
   /**
-   * Obtiene una confirmación por ID
+   * Obtener confirmación por ID
    */
-  async obtenerPorId(id: string): Promise<ConfirmacionEnfermero> {
+  async obtenerConfirmacion(id: string): Promise<ConfirmacionResponseDto> {
     const confirmacion = await this.prisma.confirmaciones_enfermero.findUnique({
       where: { id },
       include: {
         registro_triage: {
           include: {
-            pacientes: {
-              include: {
-                usuarios: true,
-              },
-            },
-            cuestionario: true,
+            evaluacion_preliminar: true,
           },
         },
-        enfermeros: {
+        enfermero: {
           include: {
             usuarios: true,
           },
@@ -197,38 +184,28 @@ export class ConfirmacionService {
     });
 
     if (!confirmacion) {
-      throw new NotFoundException('Confirmación no encontrada');
+      throw new NotFoundException(`Confirmación ${id} no encontrada`);
     }
 
-    return confirmacion as ConfirmacionEnfermero;
+    return confirmacion as any as ConfirmacionResponseDto;
   }
 
   /**
-   * Obtiene confirmaciones de un enfermero
+   * Obtener confirmaciones por enfermero
    */
-  async obtenerPorEnfermero(
-    enfermeroId: string,
-    limite: number = 50,
-  ): Promise<ConfirmacionEnfermero[]> {
-    const confirmaciones = await this.prisma.confirmaciones_enfermero.findMany({
-      where: { enfermero_id: enfermeroId },
+  async obtenerConfirmacionesPorEnfermero(enfermero_id: string, limit: number = 50) {
+    return this.prisma.confirmaciones_enfermero.findMany({
+      where: { enfermero_id },
       include: {
         registro_triage: {
           include: {
-            pacientes: {
-              include: {
-                usuarios: true,
-              },
-            },
+            evaluacion_preliminar: true,
+            pacientes: true,
           },
         },
       },
-      orderBy: {
-        creado_en: 'desc',
-      },
-      take: limite,
+      orderBy: { creado_en: 'desc' },
+      take: limit,
     });
-
-    return confirmaciones as ConfirmacionEnfermero[];
   }
 }

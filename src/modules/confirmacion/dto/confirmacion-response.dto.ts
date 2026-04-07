@@ -1,22 +1,20 @@
 // src/modules/confirmacion/dto/confirmacion-response.dto.ts
 
-import { Field, ObjectType, Int } from '@nestjs/graphql';
-import { ConfirmacionEnfermero } from '../entities/confirmacion-enfermero.entity';
+export class ConfirmacionResponseDto {
+  id: string;
+  registro_triage_id: string;
+  enfermero_id: string;
 
-@ObjectType()
-export class ConfirmacionResponse {
-  @Field(() => ConfirmacionEnfermero)
-  confirmacion: ConfirmacionEnfermero;
+  nivel_sugerido_ia: number;
+  nivel_final_enfermero: number;
 
-  @Field()
-  mensaje: string;
+  acepto_sugerencia: boolean;
+  razon_modificacion: string | null;
 
-  @Field()
-  siguiente_paso: string; 
+  tipo_modificacion: string | null;
+  diferencia_niveles: number | null;
 
-  @Field(() => Int)
-  posicion_en_cola: number;
+  tiempo_confirmacion_ms: number | null;
 
-  @Field()
-  alerta_critica: boolean;
+  creado_en: Date;
 }

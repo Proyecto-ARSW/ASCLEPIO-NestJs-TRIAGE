@@ -3,15 +3,16 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding database...');
-  console.log('Creando niveles de triage...');
+  console.log('🌱 Starting seed...');
+
+  // 1. Niveles de triage
+  console.log('📊 Creating niveles_triage...');
   await prisma.niveles_triage.createMany({
     data: [
       {
         nivel: 1,
         nombre: 'Resucitación',
-        descripcion:
-          'Condición que amenaza la vida de manera inmediata. Requiere intervención simultánea de evaluación y tratamiento.',
+        descripcion: 'Riesgo vital inmediato',
         tiempo_max_espera_min: 0,
         color_codigo: '#FF0000',
         activo: true,
@@ -19,8 +20,7 @@ async function main() {
       {
         nivel: 2,
         nombre: 'Emergencia',
-        descripcion:
-          'Situación de riesgo vital que requiere atención médica inmediata. Puede evolucionar a deterioro rápido.',
+        descripcion: 'Riesgo vital potencial',
         tiempo_max_espera_min: 15,
         color_codigo: '#FF6600',
         activo: true,
@@ -28,66 +28,126 @@ async function main() {
       {
         nivel: 3,
         nombre: 'Urgencia',
-        descripcion:
-          'Condición que requiere medidas diagnósticas y terapéuticas en urgencias pero no representa riesgo vital inmediato.',
+        descripcion: 'Situación urgente',
         tiempo_max_espera_min: 60,
-        color_codigo: '#FFFF00',
+        color_codigo: '#FFEB3B',
         activo: true,
       },
       {
         nivel: 4,
         nombre: 'Urgencia menor',
-        descripcion:
-          'Condición que no compromete el estado general del paciente. Puede ser atendido en consulta externa.',
+        descripcion: 'Situación no urgente',
         tiempo_max_espera_min: 120,
-        color_codigo: '#00FF00',
+        color_codigo: '#4CAF50',
         activo: true,
       },
       {
         nivel: 5,
         nombre: 'No urgente',
-        descripcion:
-          'Problemas de salud crónicos o agudos sin evidencia de deterioro que pueden esperar atención programada.',
+        descripcion: 'Consulta ambulatoria',
         tiempo_max_espera_min: 240,
-        color_codigo: '#0000FF',
+        color_codigo: '#2196F3',
         activo: true,
       },
     ],
     skipDuplicates: true,
   });
-  console.log('Creando niveles de formación...');
-  await prisma.formacion.createMany({
-    data: [
-      {
-        nombre: 'Auxiliar',
-        descripcion:
-          'Formación técnica de 1-2 años. Realiza cuidados básicos bajo supervisión. No autorizado para triage autónomo.',
-      },
-      {
-        nombre: 'Técnico',
-        descripcion:
-          'Formación tecnológica de 2-3 años. Cuidados de mediana complejidad. Puede realizar triage con supervisión.',
-      },
-      {
-        nombre: 'Profesional',
-        descripcion:
-          'Pregrado universitario de 4-5 años. Ejercicio autónomo. Autorizado para triage según Resolución 5596/2015.',
-      },
-      {
-        nombre: 'Especialista',
-        descripcion:
-          'Postgrado en área específica. Formación avanzada en Urgencias, UCI, Pediatría u otras especialidades.',
-      },
-    ],
-    skipDuplicates: true,
+
+  // 2. Hospital de prueba
+  console.log('🏥 Creating hospital...');
+  const hospital = await prisma.hospitales.create({
+    data: {
+      nombre: 'Hospital Universitario de Desarrollo',
+      nit: '900123456-7',
+      departamento: 'Cundinamarca',
+      ciudad: 'Bogotá',
+      direccion: 'Calle 127 # 45-67',
+      telefono: '+57 1 234 5678',
+      email_contacto: 'contacto@hospital-dev.com',
+      tipo_institucion: 'Público',
+      capacidad_urgencias: 50,
+      numero_consultorios: 20,
+      activo: true,
+    },
   });
 
-  console.log('Seed completado!');
+  // 3. Formación
+  console.log('🎓 Creating formacion...');
+  const formacion = await prisma.formacion.create({
+    data: {
+      nombre: 'Enfermería Profesional',
+      descripcion: 'Título profesional en enfermería',
+    },
+  });
+
+  // 4. Usuario enfermero
+  console.log('👨‍⚕️ Creating enfermero...');
+  const usuarioEnfermero = await prisma.usuarios.create({
+    data: {
+      nombre: 'María',
+      apellido: 'Rodríguez',
+      email: 'maria.enfermera@hospital-dev.com',
+      password_hash: '$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', // 'password123'
+      rol: 'ENFERMERO',
+      telefono: '+57 300 123 4567',
+      activo: true,
+    },
+  });
+
+  const enfermero = await prisma.enfermeros.create({
+    data: {
+      usuario_id: usuarioEnfermero.id,
+      numero_registro: 'ENF-12345',
+      nivel_formacion_id: formacion.id,
+      certificacion_triage: true,
+      fecha_certificacion: new Date('2023-01-15'),
+      activo: true,
+    },
+  });
+
+  // 5. Usuario paciente
+  console.log('🧑 Creating paciente...');
+  const usuarioPaciente = await prisma.usuarios.create({
+    data: {
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan.perez@example.com',
+      password_hash: '$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', // 'password123'
+      rol: 'PACIENTE',
+      telefono: '+57 310 987 6543',
+      activo: true,
+    },
+  });
+
+  const paciente = await prisma.pacientes.create({
+    data: {
+      usuario_id: usuarioPaciente.id,
+      fecha_nacimiento: new Date('1990-05-15'),
+      tipo_sangre: 'O+',
+      numero_documento: '1032456789',
+      tipo_documento: 'CC',
+      eps: 'Compensar',
+      alergias: 'Penicilina',
+    },
+  });
+
+  console.log('\n✅ Seed completed successfully!');
+  console.log('═══════════════════════════════════════════════');
+  console.log(`🏥 Hospital ID: ${hospital.id}`);
+  console.log(`👨‍⚕️ Enfermero ID: ${enfermero.id}`);
+  console.log(`   Usuario ID: ${usuarioEnfermero.id}`);
+  console.log(`   Email: ${usuarioEnfermero.email}`);
+  console.log(`🧑 Paciente ID: ${paciente.id}`);
+  console.log(`   Usuario ID: ${usuarioPaciente.id}`);
+  console.log(`   Documento: ${paciente.numero_documento}`);
+  console.log(`   Email: ${usuarioPaciente.email}`);
+  console.log('═══════════════════════════════════════════════');
+  console.log('💡 Password para todos los usuarios: password123');
 }
 
 main()
-  .catch(e => {
-    console.error('Error en seed:', e);
+  .catch((e) => {
+    console.error('❌ Seed failed:', e);
     process.exit(1);
   })
   .finally(async () => {

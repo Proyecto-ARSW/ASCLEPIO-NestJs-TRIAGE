@@ -23,7 +23,7 @@ import { ColaModule } from './modules/cola/cola.module';
 import { EventosModule } from './modules/eventos/eventos.module';
 import { WebsocketsModule } from './modules/websockets/websockets.module';
 import { TurnosModule } from './modules/turnos/turnos.module';
-import { CuestionarioModule } from './modules/cuestionario/cuestionario.module';
+import { EvaluacionModule } from './modules/evaluacion/evaluacion.module';
 import { VitalesModule } from './modules/vitales/vitales.module';
 import { ConfirmacionModule } from './modules/confirmacion/confirmacion.module';
 import { AlertasModule } from './modules/alertas/alertas.module';
@@ -76,7 +76,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 
     // Módulos de dominio
     TurnosModule,       // Gestión de turnos
-    CuestionarioModule, // Cuestionarios + IA preliminar (Ollama)
+    EvaluacionModule, // Cuestionarios + IA preliminar (Ollama)
     VitalesModule,      // Signos vitales + IA clasificación (Random Forest)
     ConfirmacionModule, // Confirmación enfermero + métricas IA
     AlertasModule,      // Alertas críticas + GraphQL Subscriptions

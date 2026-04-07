@@ -1,64 +1,41 @@
 // src/modules/vitales/dto/vitales-response.dto.ts
 
-import { Field, ObjectType, Int, Float } from '@nestjs/graphql';
-import { RegistroTriage } from '../entities/registro-triage.entity';
+export class VitalesResponseDto {
+  id: string;
+  paciente_id: string;
+  hospital_id: number;
+  enfermero_id: string;
+  evaluacion_preliminar_id: string;
 
-@ObjectType()
-export class ResultadoClasificador {
-  @Field(() => Int)
-  nivel_sugerido: number;
+  // Vitales
+  presion_sistolica: number;
+  presion_diastolica: number;
+  frecuencia_cardiaca: number;
+  frecuencia_respiratoria: number;
+  temperatura: number;
+  saturacion_oxigeno: number;
+  peso_kg: number | null;
+  altura_cm: number | null;
 
-  @Field(() => Float)
-  confianza: number;
+  // Campos calculados
+  presion_arterial_media: number | null;
+  shock_index: number | null;
+  tiene_alertas_vitales: boolean;
 
-  @Field(() => Probabilidades)
-  probabilidades: Probabilidades;
+  // Clasificación IA
+  nivel_sugerido_ia: number;
+  confiancia_ia: number;
+  comentarios_ia: string | null;
+  probabilidad_nivel_1: number | null;
+  probabilidad_nivel_2: number | null;
+  probabilidad_nivel_3: number | null;
+  probabilidad_nivel_4: number | null;
+  probabilidad_nivel_5: number | null;
 
-  @Field(() => [String])
-  features_clave: string[];
+  // Info adicional
+  motivo_consulta: string;
+  sintomas_observados: string | null;
+  observaciones: string | null;
 
-  @Field(() => [String])
-  alertas_vitales: string[];
-
-  @Field()
-  razon_clinica: string;
-
-  @Field()
-  modelo_version: string;
-}
-
-@ObjectType()
-export class Probabilidades {
-  @Field(() => Float)
-  nivel_1: number;
-
-  @Field(() => Float)
-  nivel_2: number;
-
-  @Field(() => Float)
-  nivel_3: number;
-
-  @Field(() => Float)
-  nivel_4: number;
-
-  @Field(() => Float)
-  nivel_5: number;
-}
-
-@ObjectType()
-export class VitalesResponse {
-  @Field(() => RegistroTriage)
-  registro_triage: RegistroTriage;
-
-  @Field(() => ResultadoClasificador)
-  resultado_clasificador: ResultadoClasificador;
-
-  @Field()
-  mensaje: string;
-
-  @Field()
-  siguiente_paso: string; // "TRIAGE_COMPLETO"
-
-  @Field(() => [String])
-  alertas_criticas: string[];
+  creado_en: Date;
 }

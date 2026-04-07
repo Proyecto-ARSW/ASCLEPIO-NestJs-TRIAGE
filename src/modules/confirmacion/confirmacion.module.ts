@@ -1,21 +1,20 @@
 // src/modules/confirmacion/confirmacion.module.ts
 
 import { Module } from '@nestjs/common';
-import { ConfirmacionService } from './services/confirmacion.service';
-import { MetricasIAService } from './services/metricas-ia.service';
-import { ConfirmacionController } from './controllers/confirmacion.controller';
-import { TurnosModule } from '../turnos/turnos.module';
-import { VitalesModule } from '../vitales/vitales.module';
-import { ColaModule } from '../cola/cola.module'; 
+import { ConfirmacionController } from './confirmacion.controller';
+import { ConfirmacionService } from './confirmacion.service';
+import { PrismaModule } from '../../prisma/prisma.module';
+import { ColaModule } from '../cola/cola.module';
+import { AlertasModule } from '../alertas/alertas.module';
 
 @Module({
   imports: [
-    TurnosModule,
-    VitalesModule,
-    ColaModule, 
+    PrismaModule,
+    ColaModule,
+    AlertasModule,
   ],
   controllers: [ConfirmacionController],
-  providers: [ConfirmacionService, MetricasIAService],
-  exports: [ConfirmacionService, MetricasIAService],
+  providers: [ConfirmacionService],
+  exports: [ConfirmacionService],
 })
 export class ConfirmacionModule {}

@@ -5,7 +5,7 @@ import { Paciente } from '@/modules/shared/entities/paciente.entity';
 import { Hospital } from '@/modules/shared/entities/hospital.entity';
 import { Enfermero } from '@/modules/shared/entities/enfermero.entity';
 import { NivelTriage } from '@/modules/shared/entities/nivel-triage.entity';
-import { CuestionarioTriage } from '@/modules/cuestionario/entities/cuestionario-triage.entity';
+import { CuestionarioTriage } from '@/modules/evaluacion/entities/cuestionario-triage.entity';
 
 export enum TipoEvaluacion {
   PRELIMINAR = 'PRELIMINAR',

@@ -2,17 +2,15 @@
 
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { VitalesService } from './services/vitales.service';
+import { VitalesController } from './vitales.controller';
+import { VitalesService } from './vitales.service';
 import { ClassifierGatewayService } from './services/classifier-gateway.service';
-import { VitalesController } from './controllers/vitales.controller';
-import { TurnosModule } from '../turnos/turnos.module';
-import { CuestionarioModule } from '../cuestionario/cuestionario.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
   imports: [
+    PrismaModule,
     HttpModule,
-    TurnosModule,
-    CuestionarioModule,
   ],
   controllers: [VitalesController],
   providers: [VitalesService, ClassifierGatewayService],
