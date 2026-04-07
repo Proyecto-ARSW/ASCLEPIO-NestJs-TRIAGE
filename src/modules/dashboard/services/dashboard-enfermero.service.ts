@@ -1,9 +1,9 @@
 // src/modules/dashboard/services/dashboard-enfermero.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
 import { DashboardEnfermero } from '../dto/dashboard-enfermero.dto';
-import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
+import { EstadoTurno } from 'src/modules/turnos/entities/turno.entity';
 
 @Injectable()
 export class DashboardEnfermeroService {
@@ -20,6 +20,7 @@ export class DashboardEnfermeroService {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
+    // 1. Turnos críticos (niveles 1 y 2 en espera)
     const criticos = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
@@ -30,9 +31,7 @@ export class DashboardEnfermeroService {
         fecha: { gte: hoy },
       },
       include: {
-        pacientes: {
-          include: { usuarios: true },
-        },
+        pacientes: true, 
         nivel_triage: true,
       },
       orderBy: {
@@ -40,6 +39,7 @@ export class DashboardEnfermeroService {
       },
     });
 
+    // 2. Turnos esperando vitales
     const esperandoVitales = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
@@ -47,10 +47,7 @@ export class DashboardEnfermeroService {
         fecha: { gte: hoy },
       },
       include: {
-        pacientes: {
-          include: { usuarios: true },
-        },
-        cuestionario: true,
+        pacientes: true,
       },
       orderBy: {
         creado_en: 'asc',
@@ -64,9 +61,7 @@ export class DashboardEnfermeroService {
         fecha: { gte: hoy },
       },
       include: {
-        pacientes: {
-          include: { usuarios: true },
-        },
+        pacientes: true, 
         registro_triage: true,
       },
       orderBy: {
@@ -74,16 +69,46 @@ export class DashboardEnfermeroService {
       },
     });
 
+    const criticosConUsuarios = await this.agregarUsuariosATurnos(criticos);
+    const esperandoVitalesConUsuarios = await this.agregarUsuariosATurnos(esperandoVitales);
+    const esperandoConfirmacionConUsuarios = await this.agregarUsuariosATurnos(esperandoConfirmacion);
+
     const metricas = await this.calcularMetricasDia(hospitalId, hoy);
 
     return {
-      criticos: criticos as any,
-      esperando_vitales: esperandoVitales as any,
-      esperando_confirmacion: esperandoConfirmacion as any,
+      criticos: criticosConUsuarios as any,
+      esperando_vitales: esperandoVitalesConUsuarios as any,
+      esperando_confirmacion: esperandoConfirmacionConUsuarios as any,
       metricas_dia: metricas,
     };
   }
 
+  /**
+   * Agrega información de usuarios a los turnos
+   */
+  private async agregarUsuariosATurnos(turnos: any[]) {
+    const turnosConUsuarios = [];
+
+    for (const turno of turnos) {
+      if (turno.pacientes) {
+        const usuario = await this.prisma.usuarios.findUnique({
+          where: { id: turno.pacientes.usuario_id },
+        });
+
+        turnosConUsuarios.push({
+          ...turno,
+          pacientes: {
+            ...turno.pacientes,
+            usuarios: usuario,
+          },
+        });
+      } else {
+        turnosConUsuarios.push(turno);
+      }
+    }
+
+    return turnosConUsuarios;
+  }
 
   /**
    * Calcula métricas del día
@@ -100,14 +125,14 @@ export class DashboardEnfermeroService {
     const totalAtendidos = turnosHoy.length;
 
     const porNivel = {
-      nivel_1: turnosHoy.filter(t => t.nivel_triage_id === 1).length,
-      nivel_2: turnosHoy.filter(t => t.nivel_triage_id === 2).length,
-      nivel_3: turnosHoy.filter(t => t.nivel_triage_id === 3).length,
-      nivel_4: turnosHoy.filter(t => t.nivel_triage_id === 4).length,
-      nivel_5: turnosHoy.filter(t => t.nivel_triage_id === 5).length,
+      nivel_1: turnosHoy.filter((t) => t.nivel_triage_id === 1).length,
+      nivel_2: turnosHoy.filter((t) => t.nivel_triage_id === 2).length,
+      nivel_3: turnosHoy.filter((t) => t.nivel_triage_id === 3).length,
+      nivel_4: turnosHoy.filter((t) => t.nivel_triage_id === 4).length,
+      nivel_5: turnosHoy.filter((t) => t.nivel_triage_id === 5).length,
     };
 
-    const turnosConTiempos = turnosHoy.filter(t => t.llamado_en);
+    const turnosConTiempos = turnosHoy.filter((t) => t.llamado_en);
     let tiempoPromedioEspera = 0;
 
     if (turnosConTiempos.length > 0) {
@@ -116,9 +141,7 @@ export class DashboardEnfermeroService {
         return sum + espera;
       }, 0);
 
-      tiempoPromedioEspera = Math.floor(
-        sumaEsperas / turnosConTiempos.length / 60000,
-      );
+      tiempoPromedioEspera = Math.floor(sumaEsperas / turnosConTiempos.length / 60000);
     }
 
     return {

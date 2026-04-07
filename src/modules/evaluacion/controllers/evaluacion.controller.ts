@@ -1,8 +1,8 @@
 // src/modules/evaluacion/evaluacion.controller.ts
 
 import { Controller, Post, Get, Param, Body, HttpCode, Query, ParseIntPipe } from '@nestjs/common';
-import { EvaluacionService } from './evaluacion.service';
-import { GuardarEvaluacionDto } from './dto/guardar-evaluacion.dto';
+import { EvaluacionService } from '../services/evaluacion.service';
+import { GuardarEvaluacionDto } from '../dto/guardar-evaluacion.dto';
 
 @Controller('evaluaciones')
 export class EvaluacionController {

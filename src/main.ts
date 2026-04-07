@@ -38,10 +38,10 @@ async function bootstrap() {
 
   await app.listen(port);
   
-  console.log(`🚀 asclepio-triage corriendo en http://localhost:${port}`);
-  console.log(`📊 Métricas disponibles en http://localhost:${port}/metrics`);
-  console.log(`🏥 Health check en http://localhost:${port}/health`);
-  console.log(`🎮 GraphQL Playground en http://localhost:${port}/graphql`);
+  console.log(`asclepio-triage corriendo en http://localhost:${port}`);
+  console.log(`Métricas disponibles en http://localhost:${port}/metrics`);
+  console.log(`Health check en http://localhost:${port}/health`);
+  console.log(`GraphQL Playground en http://localhost:${port}/graphql`);
 }
 
 bootstrap();

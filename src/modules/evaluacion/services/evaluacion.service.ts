@@ -1,11 +1,10 @@
-// src/modules/evaluacion/evaluacion.service.ts
+// src/modules/evaluacion/services/evaluacion.service.ts
 
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { TriageEventPublisher } from '../eventos/publishers/triage-event.publisher';
-import { TriageGateway } from '../websockets/triage.gateway';
-import { GuardarEvaluacionDto } from './dto/guardar-evaluacion.dto';
-import { EvaluacionResponseDto } from './dto/evaluacion-response.dto';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
+import { GuardarEvaluacionDto } from '../dto/guardar-evaluacion.dto';
+import { TriageEventPublisher } from '../../eventos/publishers/triage-event.publisher';
+import { TriageGateway } from '../../websockets/gateways/triage.gateway';  
 
 @Injectable()
 export class EvaluacionService {
@@ -21,7 +20,7 @@ export class EvaluacionService {
    * Guarda la evaluación preliminar recibida de Ollama
    * Este método es llamado por el webhook de Ollama
    */
-  async guardarEvaluacionPreliminar(dto: GuardarEvaluacionDto): Promise<EvaluacionResponseDto> {
+  async guardarEvaluacionPreliminar(dto: GuardarEvaluacionDto): Promise<any> {
     this.logger.log(`Guardando evaluación preliminar - Turno: ${dto.turno_id}`);
 
     // 1. Validar que el turno exista y esté en el estado correcto
@@ -35,7 +34,7 @@ export class EvaluacionService {
 
     if (turno.estado !== 'CUESTIONARIO_PENDIENTE') {
       throw new BadRequestException(
-        `El turno ya fue procesado (estado actual: ${turno.estado})`
+        `El turno ya fue procesado (estado actual: ${turno.estado})`,
       );
     }
 
@@ -54,7 +53,9 @@ export class EvaluacionService {
         nivel_prioridad: dto.triage_data.nivelPrioridad,
         comentario_paciente: dto.triage_data.comentario || null,
         comentarios_ia: dto.triage_data.comentariosIA || null,
-        advertencia_ia: dto.triage_data.advertenciaIA || 'Contenido generado con IA; puede contener errores.',
+        advertencia_ia:
+          dto.triage_data.advertenciaIA ||
+          'Contenido generado con IA; puede contener errores.',
 
         // Metadatos de Ollama
         confidence_score: dto.confidence_score,
@@ -73,10 +74,10 @@ export class EvaluacionService {
     });
 
     this.logger.log(
-      `Evaluación guardada exitosamente - ID: ${evaluacion.id}, Nivel prioridad: ${evaluacion.nivel_prioridad}`
+      `Evaluación guardada exitosamente - ID: ${evaluacion.id}, Nivel prioridad: ${evaluacion.nivel_prioridad}`,
     );
 
-    // 4. Publicar evento RabbitMQ
+    
     await this.eventPublisher.publishEvaluacionCompletada({
       evaluacion_id: evaluacion.id,
       turno_id: dto.turno_id,
@@ -85,8 +86,8 @@ export class EvaluacionService {
       paciente_id: turno.paciente_id,
       sintomas: evaluacion.sintomas,
     });
+    
 
-    // 5. WebSocket a dashboard de enfermeros
     this.triageGateway.emitToHospital(turno.hospital_id, 'evaluacion:completada', {
       turno_id: dto.turno_id,
       numero_turno: turno.numero_turno,
@@ -96,20 +97,25 @@ export class EvaluacionService {
       embarazo: evaluacion.embarazo,
     });
 
-    // 6. WebSocket específico a dashboard de enfermeros
     this.triageGateway.emitToDashboardEnfermeros(turno.hospital_id, 'nuevo:paciente:esperando:vitales', {
       turno_id: dto.turno_id,
       numero_turno: turno.numero_turno,
       nivel_prioridad: evaluacion.nivel_prioridad,
     });
 
-    return evaluacion as EvaluacionResponseDto;
+
+    return {
+      ...evaluacion,
+      confidence_score: evaluacion.confidence_score
+        ? parseFloat(evaluacion.confidence_score.toString())
+        : null,
+    };
   }
 
   /**
    * Obtener evaluación por ID
    */
-  async obtenerEvaluacion(id: string): Promise<EvaluacionResponseDto> {
+  async obtenerEvaluacion(id: string): Promise<any> {
     const evaluacion = await this.prisma.evaluaciones_preliminares.findUnique({
       where: { id },
       include: {
@@ -122,13 +128,18 @@ export class EvaluacionService {
       throw new NotFoundException(`Evaluación ${id} no encontrada`);
     }
 
-    return evaluacion as EvaluacionResponseDto;
+    return {
+      ...evaluacion,
+      confidence_score: evaluacion.confidence_score
+        ? parseFloat(evaluacion.confidence_score.toString())
+        : null,
+    };
   }
 
   /**
    * Obtener evaluación por turno_id
    */
-  async obtenerEvaluacionPorTurno(turno_id: string): Promise<EvaluacionResponseDto> {
+  async obtenerEvaluacionPorTurno(turno_id: string): Promise<any> {
     const evaluacion = await this.prisma.evaluaciones_preliminares.findFirst({
       where: { turno_id },
       include: {
@@ -138,10 +149,17 @@ export class EvaluacionService {
     });
 
     if (!evaluacion) {
-      throw new NotFoundException(`No se encontró evaluación para el turno ${turno_id}`);
+      throw new NotFoundException(
+        `No se encontró evaluación para el turno ${turno_id}`,
+      );
     }
 
-    return evaluacion as EvaluacionResponseDto;
+    return {
+      ...evaluacion,
+      confidence_score: evaluacion.confidence_score
+        ? parseFloat(evaluacion.confidence_score.toString())
+        : null,
+    };
   }
 
   /**
@@ -179,6 +197,11 @@ export class EvaluacionService {
       ],
     });
 
-    return evaluaciones;
+    return evaluaciones.map((e) => ({
+      ...e,
+      confidence_score: e.confidence_score
+        ? parseFloat(e.confidence_score.toString())
+        : null,
+    }));
   }
 }

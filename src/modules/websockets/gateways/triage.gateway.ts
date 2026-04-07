@@ -20,7 +20,7 @@ import {
   ServerEvents,
   ClientEvents,
   TurnoEventPayload,
-  CuestionarioEventPayload,
+  EvaluacionCompletadaEventPayload,
   VitalesEventPayload,
   TriageConfirmadoEventPayload,
   ColaEventPayload,
@@ -28,7 +28,7 @@ import {
   AlertaCriticaEventPayload,
   NotificacionEventPayload,
 } from '../interfaces/socket-events.interface';
-import { RedisService } from '@/modules/cola/services/redis.service';
+import { RedisService } from 'src/modules/cola/services/redis.service';
 
 @WebSocketGateway({
   namespace: '/triage',
@@ -51,34 +51,29 @@ export class TriageGateway
     private readonly redis: RedisService,
   ) {}
 
-
   afterInit(server: Server) {
     this.logger.log('🔌 WebSocket Gateway inicializado');
-
     this.suscribirseAEventosRedis();
   }
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
       const token = this.extractToken(client);
-      
+
       if (!token) {
         this.logger.warn(`Cliente intentó conectar sin token - ID: ${client.id}`);
         client.disconnect();
         return;
       }
 
-      this.logger.log(
-        `Cliente conectado - ID: ${client.id} - IP: ${client.handshake.address}`,
-      );
-
+      this.logger.log(`Cliente conectado - ID: ${client.id} - IP: ${client.handshake.address}`);
 
       client.emit('connected', {
         message: 'Conectado exitosamente al servidor de triage',
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
-      this.logger.error(`Error en conexión: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Error en conexión: ${error?.message || error}`);
       client.disconnect();
     }
   }
@@ -89,7 +84,6 @@ export class TriageGateway
     );
   }
 
-
   @SubscribeMessage(ClientEvents.JOIN_HOSPITAL)
   @UseGuards(WsAuthGuard)
   async handleJoinHospital(
@@ -98,13 +92,11 @@ export class TriageGateway
     @WsCurrentUser() user: any,
   ) {
     const room = `hospital:${data.hospital_id}`;
-    
+
     await client.join(room);
     client.hospital_id = data.hospital_id;
 
-    this.logger.log(
-      `Usuario ${user.email} (${user.rol}) se unió a hospital ${data.hospital_id}`,
-    );
+    this.logger.log(`Usuario ${user.email} (${user.rol}) se unió a hospital ${data.hospital_id}`);
 
     client.emit('joined:hospital', {
       hospital_id: data.hospital_id,
@@ -120,7 +112,7 @@ export class TriageGateway
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     const room = `hospital:${data.hospital_id}`;
-    
+
     await client.leave(room);
     client.hospital_id = undefined;
 
@@ -150,9 +142,7 @@ export class TriageGateway
     await client.join(room);
     client.dashboard_type = 'enfermero';
 
-    this.logger.log(
-      `Enfermero ${user.email} se unió al dashboard - Hospital: ${data.hospital_id}`,
-    );
+    this.logger.log(`Enfermero ${user.email} se unió al dashboard - Hospital: ${data.hospital_id}`);
 
     client.emit('joined:dashboard-enfermero', {
       hospital_id: data.hospital_id,
@@ -178,9 +168,7 @@ export class TriageGateway
     await client.join(room);
     client.dashboard_type = 'medico';
 
-    this.logger.log(
-      `Médico ${user.email} se unió al dashboard - Hospital: ${data.hospital_id}`,
-    );
+    this.logger.log(`Médico ${user.email} se unió al dashboard - Hospital: ${data.hospital_id}`);
 
     client.emit('joined:dashboard-medico', {
       hospital_id: data.hospital_id,
@@ -197,9 +185,7 @@ export class TriageGateway
     await client.join(room);
     client.dashboard_type = 'pantalla';
 
-    this.logger.log(
-      `Pantalla de llamados conectada - Hospital: ${data.hospital_id}`,
-    );
+    this.logger.log(`Pantalla de llamados conectada - Hospital: ${data.hospital_id}`);
 
     client.emit('joined:pantalla-llamados', {
       hospital_id: data.hospital_id,
@@ -212,30 +198,63 @@ export class TriageGateway
     client.emit('pong', { timestamp: new Date().toISOString() });
   }
 
+
+  /**
+   * Emite evento a un hospital específico
+   */
+  emitToHospital(hospitalId: number, event: string, payload: any) {
+    const room = `hospital:${hospitalId}`;
+    this.server.to(room).emit(event, payload);
+    this.logger.debug(`Evento ${event} emitido a hospital ${hospitalId}`);
+  }
+
+  /**
+   * Emite evento a un paciente específico (por turno_id)
+   */
+  emitToPaciente(turnoId: string, event: string, payload: any) {
+    const room = `turno:${turnoId}`;
+    this.server.to(room).emit(event, payload);
+    this.logger.debug(`Evento ${event} emitido a turno ${turnoId}`);
+  }
+
+  /**
+   * Emite evento al dashboard de enfermeros
+   */
+  emitToDashboardEnfermeros(hospitalId: number, event: string, payload: any) {
+    const room = `dashboard:enfermero:${hospitalId}`;
+    this.server.to(room).emit(event, payload);
+    this.logger.debug(`Evento ${event} emitido a dashboard enfermeros - Hospital ${hospitalId}`);
+  }
+
+  /**
+   * Emite evento al dashboard de médicos
+   */
+  emitToDashboardMedicos(hospitalId: number, event: string, payload: any) {
+    const room = `dashboard:medico:${hospitalId}`;
+    this.server.to(room).emit(event, payload);
+    this.logger.debug(`Evento ${event} emitido a dashboard médicos - Hospital ${hospitalId}`);
+  }
+
   /**
    * Emite evento cuando se crea un turno
    */
   emitTurnoCreado(payload: TurnoEventPayload) {
     const room = `hospital:${payload.hospital_id}`;
-    
     this.server.to(room).emit(ServerEvents.TURNO_CREADO, payload);
-    
-    this.logger.debug(
-      `Evento ${ServerEvents.TURNO_CREADO} emitido - Turno: ${payload.numero_turno}`,
-    );
+    this.logger.debug(`Evento ${ServerEvents.TURNO_CREADO} emitido - Turno: ${payload.numero_turno}`);
   }
 
   /**
-   * Emite evento cuando se completa el cuestionario
+   * Emite evento cuando se completa el cuestionario/evaluación
    */
-  emitCuestionarioCompletado(payload: CuestionarioEventPayload, hospitalId: number) {
+  emitCuestionarioCompletado(payload: EvaluacionCompletadaEventPayload, hospitalId: number) {
     const room = `hospital:${hospitalId}`;
     const dashboardEnfermero = `dashboard:enfermero:${hospitalId}`;
-    
-    this.server.to(room).emit(ServerEvents.CUESTIONARIO_COMPLETADO, payload);
-    this.server.to(dashboardEnfermero).emit(ServerEvents.CUESTIONARIO_COMPLETADO, payload);
-    
-    this.logger.debug(`Evento ${ServerEvents.CUESTIONARIO_COMPLETADO} emitido`);
+
+    this.server.to(room).emit(ServerEvents.EVALUACION_COMPLETADA, payload);
+    this.server.to(dashboardEnfermero).emit(ServerEvents.EVALUACION_COMPLETADA, payload);
+
+    this.logger.debug(`Evento ${ServerEvents.EVALUACION_COMPLETADA} emitido`);
   }
 
   /**
@@ -244,10 +263,10 @@ export class TriageGateway
   emitVitalesRegistrados(payload: VitalesEventPayload, hospitalId: number) {
     const room = `hospital:${hospitalId}`;
     const dashboardEnfermero = `dashboard:enfermero:${hospitalId}`;
-    
+
     this.server.to(room).emit(ServerEvents.VITALES_REGISTRADOS, payload);
     this.server.to(dashboardEnfermero).emit(ServerEvents.VITALES_REGISTRADOS, payload);
-    
+
     this.logger.debug(`Evento ${ServerEvents.VITALES_REGISTRADOS} emitido`);
   }
 
@@ -258,11 +277,11 @@ export class TriageGateway
     const room = `hospital:${hospitalId}`;
     const dashboardEnfermero = `dashboard:enfermero:${hospitalId}`;
     const dashboardMedico = `dashboard:medico:${hospitalId}`;
-    
+
     this.server.to(room).emit(ServerEvents.TRIAGE_CONFIRMADO, payload);
     this.server.to(dashboardEnfermero).emit(ServerEvents.TRIAGE_CONFIRMADO, payload);
     this.server.to(dashboardMedico).emit(ServerEvents.TRIAGE_CONFIRMADO, payload);
-    
+
     this.logger.debug(`Evento ${ServerEvents.TRIAGE_CONFIRMADO} emitido`);
   }
 
@@ -272,10 +291,10 @@ export class TriageGateway
   emitColaActualizada(payload: ColaEventPayload) {
     const room = `hospital:${payload.hospital_id}`;
     const dashboardMedico = `dashboard:medico:${payload.hospital_id}`;
-    
+
     this.server.to(room).emit(ServerEvents.COLA_ACTUALIZADA, payload);
     this.server.to(dashboardMedico).emit(ServerEvents.COLA_ACTUALIZADA, payload);
-    
+
     this.logger.debug(`Evento ${ServerEvents.COLA_ACTUALIZADA} emitido`);
   }
 
@@ -285,10 +304,10 @@ export class TriageGateway
   emitPacienteLlamado(payload: PacienteLlamadoEventPayload, hospitalId: number) {
     const room = `hospital:${hospitalId}`;
     const pantallaLlamados = `pantalla:llamados:${hospitalId}`;
-    
+
     this.server.to(room).emit(ServerEvents.PACIENTE_LLAMADO, payload);
     this.server.to(pantallaLlamados).emit(ServerEvents.PANTALLA_LLAMAR, payload);
-    
+
     this.logger.debug(
       `Evento ${ServerEvents.PACIENTE_LLAMADO} emitido - Turno: ${payload.numero_turno} → Consultorio: ${payload.consultorio}`,
     );
@@ -299,12 +318,10 @@ export class TriageGateway
    */
   emitAlertaCritica(payload: AlertaCriticaEventPayload, hospitalId: number) {
     const dashboardMedico = `dashboard:medico:${hospitalId}`;
-    
+
     this.server.to(dashboardMedico).emit(ServerEvents.ALERTA_CRITICA, payload);
-    
-    this.logger.warn(
-      `Evento ${ServerEvents.ALERTA_CRITICA} emitido - Nivel: ${payload.nivel_triage}`,
-    );
+
+    this.logger.warn(`Evento ${ServerEvents.ALERTA_CRITICA} emitido - Nivel: ${payload.nivel_triage}`);
   }
 
   /**
@@ -312,12 +329,11 @@ export class TriageGateway
    */
   emitNotificacion(payload: NotificacionEventPayload, hospitalId: number, room?: string) {
     const targetRoom = room || `hospital:${hospitalId}`;
-    
+
     this.server.to(targetRoom).emit(ServerEvents.NOTIFICACION, payload);
-    
+
     this.logger.debug(`Notificación emitida: ${payload.titulo}`);
   }
-
 
   /**
    * Suscribe el gateway a eventos de Redis Pub/Sub
@@ -333,8 +349,8 @@ export class TriageGateway
           total_en_espera: data.total_en_espera || 0,
           timestamp: data.timestamp,
         });
-      } catch (error) {
-        this.logger.error(`Error procesando evento Redis: ${error.message}`);
+      } catch (error: any) {
+        this.logger.error(`Error procesando evento Redis: ${error?.message || error}`);
       }
     });
 
@@ -342,8 +358,8 @@ export class TriageGateway
       try {
         const data = JSON.parse(mensaje);
         this.emitAlertaCritica(data, data.hospital_id);
-      } catch (error) {
-        this.logger.error(`Error procesando alerta Redis: ${error.message}`);
+      } catch (error: any) {
+        this.logger.error(`Error procesando alerta Redis: ${error?.message || error}`);
       }
     });
 

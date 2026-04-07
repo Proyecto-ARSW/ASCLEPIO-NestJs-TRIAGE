@@ -5,8 +5,9 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
 } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from '@/modules/prisma/prisma.service';
 import { CrearTurnoUrgenciaDto } from '../dto/crear-turno-urgencia.dto';
 import { ActualizarEstadoTurnoDto } from '../dto/actualizar-estado-turno.dto';
 import { LlamarPacienteDto } from '../dto/llamar-paciente.dto';
@@ -14,7 +15,6 @@ import { FinalizarTurnoDto } from '../dto/finalizar-turno.dto';
 import { GeneradorNumeroService } from './generador-numero.service';
 import { TipoTurno, EstadoTurno, Turno } from '../entities/turno.entity';
 import { ColaService } from '@/modules/cola/services/cola.service';
-import { Inject } from '@nestjs/common';
 import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 
@@ -66,26 +66,28 @@ export class TurnoService {
         fecha: new Date(),
       },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true,
         hospitales: true,
       },
+    });
+
+    // Obtener usuario del paciente
+    const usuario = await this.prisma.usuarios.findUnique({
+      where: { id: paciente.usuario_id },
     });
 
     this.logger.log(
       `Turno creado: ${turno.id} - Número: ${numeroTurno} - Hospital: ${hospital.nombre}`,
     );
+
     this.triageGateway.emitTurnoCreado({
-          turno_id: turno.id,
-          numero_turno: numeroTurno,
-          hospital_id: dto.hospital_id,
-          paciente_nombre: `${turno.pacientes.usuarios.nombre} ${turno.pacientes.usuarios.apellido}`,
-          estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
-          timestamp: new Date().toISOString(),
-        });
+      turno_id: turno.id,
+      numero_turno: numeroTurno,
+      hospital_id: dto.hospital_id,
+      paciente_nombre: usuario ? `${usuario.nombre} ${usuario.apellido}` : 'Desconocido',
+      estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+      timestamp: new Date().toISOString(),
+    });
 
     await this.eventPublisher.publishTurnoCreado({
       turno_id: turno.id,
@@ -97,7 +99,7 @@ export class TurnoService {
       fecha: new Date().toISOString(),
     });
 
-    return turno as Turno;
+    return turno as unknown as Turno;
   }
 
   /**
@@ -107,15 +109,9 @@ export class TurnoService {
     const turno = await this.prisma.turnos.findUnique({
       where: { id },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true, 
         hospitales: true,
         nivel_triage: true,
-        medicos: true,
-        registro_triage: true,
       },
     });
 
@@ -123,7 +119,7 @@ export class TurnoService {
       throw new NotFoundException('Turno no encontrado');
     }
 
-    return turno as Turno;
+    return turno as unknown as Turno;
   }
 
   /**
@@ -147,21 +143,14 @@ export class TurnoService {
         ...(estado && { estado }),
       },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true,  
         nivel_triage: true,
         registro_triage: true,
       },
-      orderBy: [
-        { nivel_triage_id: 'asc' },
-        { creado_en: 'asc' },
-      ],
+      orderBy: [{ nivel_triage_id: 'asc' }, { creado_en: 'asc' }],
     });
 
-    return turnos as Turno[];
+    return turnos as unknown as Turno[];
   }
 
   /**
@@ -176,20 +165,14 @@ export class TurnoService {
         estado: dto.estado,
       },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true,  
         nivel_triage: true,
       },
     });
 
-    this.logger.log(
-      `Estado actualizado: Turno ${id} - ${turno.estado} → ${dto.estado}`,
-    );
+    this.logger.log(`Estado actualizado: Turno ${id} - ${turno.estado} → ${dto.estado}`);
 
-    return turnoActualizado as Turno;
+    return turnoActualizado as unknown as Turno;
   }
 
   /**
@@ -205,11 +188,7 @@ export class TurnoService {
     }
 
     if (turno.nivel_triage_id) {
-      await this.colaService.removerDeCola(
-        id,
-        turno.hospital_id,
-        turno.nivel_triage_id,
-      );
+      await this.colaService.removerDeCola(id, turno.hospital_id, turno.nivel_triage_id);
       this.logger.log(`Turno removido de cola Redis`);
     }
 
@@ -221,40 +200,48 @@ export class TurnoService {
         llamado_en: new Date(),
       },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true,  
         nivel_triage: true,
-        medicos: true,
       },
     });
 
-    this.logger.log(
-      `Paciente llamado: Turno ${turno.numero_turno} - Consultorio: ${dto.consultorio}`,
-    );
+    this.logger.log(`Paciente llamado: Turno ${turno.numero_turno} - Consultorio: ${dto.consultorio}`);
 
+    // Obtener médico y su usuario
     const medico = await this.prisma.medicos.findUnique({
       where: { id: dto.medico_id },
-      include: { usuarios: true },
     });
+
+    const medicoUsuario = medico
+      ? await this.prisma.usuarios.findUnique({ where: { id: medico.usuario_id } })
+      : null;
+
+    // Obtener paciente y su usuario
+    const paciente = await this.prisma.pacientes.findUnique({
+      where: { id: turno.paciente_id },
+    });
+
+    const pacienteUsuario = paciente
+      ? await this.prisma.usuarios.findUnique({ where: { id: paciente.usuario_id } })
+      : null;
 
     this.triageGateway.emitPacienteLlamado(
       {
         turno_id: turno.id,
         numero_turno: turno.numero_turno,
-        paciente_nombre: turno.pacientes.usuarios.nombre,
-        paciente_apellido: turno.pacientes.usuarios.apellido,
+        paciente_nombre: pacienteUsuario?.nombre || 'Desconocido',
+        paciente_apellido: pacienteUsuario?.apellido || '',
         consultorio: dto.consultorio,
-        medico_nombre: `${medico.usuarios.nombre} ${medico.usuarios.apellido}`,
+        medico_nombre: medicoUsuario
+          ? `${medicoUsuario.nombre} ${medicoUsuario.apellido}`
+          : 'Desconocido',
         nivel_triage: turno.nivel_triage_id,
         timestamp: new Date().toISOString(),
       },
       turno.hospital_id,
     );
 
-    const tiempoEsperaMs = new Date().getTime() - turno.creado_en.getTime();
+    const tiempoEsperaMs = Date.now() - turno.creado_en.getTime();
     const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
 
     await this.eventPublisher.publishPacienteLlamado({
@@ -264,11 +251,11 @@ export class TurnoService {
       paciente_id: turno.paciente_id,
       medico_id: dto.medico_id,
       consultorio: dto.consultorio,
-      nivel_triage: turno.nivel_triage_id,
+      nivel_triage: turno.nivel_triage_id || 0,
       tiempo_espera_minutos: tiempoEsperaMin,
     });
 
-    return turnoActualizado as Turno;
+    return turnoActualizado as unknown as Turno;
   }
 
   /**
@@ -312,24 +299,7 @@ export class TurnoService {
 
     this.logger.log(`Turno finalizado: ${id}`);
 
-    // Crear registro en historial médico (esto debería estar en otro módulo)
-    // Por ello se deja comentado.
-    /*
-    await this.prisma.historial_medico.create({
-      data: {
-        paciente_id: turno.paciente_id,
-        medico_id: dto.medico_id,
-        turno_id: id,
-        diagnostico: dto.diagnostico,
-        tratamiento: dto.tratamiento,
-        observaciones: dto.observaciones,
-      },
-    });
-    */
-
-    this.logger.log(`Turno finalizado: ${id}`);
-
-    return turnoActualizado as Turno;
+    return turnoActualizado as unknown as Turno;
   }
 
   /**
@@ -353,6 +323,6 @@ export class TurnoService {
 
     this.logger.log(`Turno cancelado: ${id}`);
 
-    return turnoActualizado as Turno;
+    return turnoActualizado as unknown as Turno;
   }
 }

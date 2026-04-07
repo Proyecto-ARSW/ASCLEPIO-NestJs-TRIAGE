@@ -8,8 +8,8 @@ export enum ServerEvents {
   TURNO_CREADO = 'turno:creado',
   TURNO_ACTUALIZADO = 'turno:actualizado',
   
-  // Cuestionario
-  CUESTIONARIO_COMPLETADO = 'cuestionario:completado',
+  // Evaluación preliminar (Ollama)
+  EVALUACION_COMPLETADA = 'evaluacion:completada',
   
   // Vitales
   VITALES_REGISTRADOS = 'vitales:registrados',
@@ -69,11 +69,12 @@ export interface TurnoEventPayload {
   timestamp: string;
 }
 
-export interface CuestionarioEventPayload {
+export interface EvaluacionCompletadaEventPayload {
   turno_id: string;
-  cuestionario_id: string;
+  evaluacion_id: string;
   nivel_preliminar: number;
   requirio_ollama: boolean;
+  sintomas: string[];
   timestamp: string;
 }
 
@@ -88,10 +89,13 @@ export interface VitalesEventPayload {
 
 export interface TriageConfirmadoEventPayload {
   turno_id: string;
-  confirmacion_id: string;
-  nivel_final: number;
-  acepto_sugerencia: boolean;
+  paciente_nombre: string;
+  paciente_apellido: string;
+  nivel_triage: number;
+  nombre_nivel: string;
+  color: string;
   posicion_cola: number;
+  tiempo_max_espera: number;
   timestamp: string;
 }
 

@@ -1,9 +1,9 @@
 // src/modules/dashboard/services/dashboard-admin.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
 import { DashboardAdmin } from '../dto/dashboard-admin.dto';
-import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
+import { EstadoTurno } from 'src/modules/turnos/entities/turno.entity';
 
 @Injectable()
 export class DashboardAdminService {
@@ -32,7 +32,7 @@ export class DashboardAdminService {
       hospitalId,
       inicioSemana,
     );
-¿¿
+
     const distribucionSemanal = await this.calcularDistribucionSemanal(
       hospitalId,
       inicioSemana,
@@ -57,12 +57,10 @@ export class DashboardAdminService {
     };
   }
 
-
   /**
    * Calcula KPIs principales
    */
   private async calcularKPIs(hospitalId: number, hoy: Date, ayer: Date) {
-
     const turnosHoy = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
@@ -80,21 +78,18 @@ export class DashboardAdminService {
       },
     });
 
-    const atendidosHoy = turnosHoy.filter(t => t.estado === EstadoTurno.ATENDIDO).length;
-    const atendidosAyer = turnosAyer.filter(t => t.estado === EstadoTurno.ATENDIDO)
-      .length;
+    const atendidosHoy = turnosHoy.filter((t) => t.estado === EstadoTurno.ATENDIDO).length;
+    const atendidosAyer = turnosAyer.filter((t) => t.estado === EstadoTurno.ATENDIDO).length;
 
     const enSistemaHoy = turnosHoy.filter(
-      t =>
-        t.estado !== EstadoTurno.ATENDIDO && t.estado !== EstadoTurno.CANCELADO,
+      (t) => t.estado !== EstadoTurno.ATENDIDO && t.estado !== EstadoTurno.CANCELADO,
     ).length;
     const enSistemaAyer = turnosAyer.filter(
-      t =>
-        t.estado !== EstadoTurno.ATENDIDO && t.estado !== EstadoTurno.CANCELADO,
+      (t) => t.estado !== EstadoTurno.ATENDIDO && t.estado !== EstadoTurno.CANCELADO,
     ).length;
 
     const turnosConTiempoHoy = turnosHoy.filter(
-      t => t.estado === EstadoTurno.ATENDIDO && t.llamado_en,
+      (t) => t.estado === EstadoTurno.ATENDIDO && t.llamado_en,
     );
     let tiempoPromedioHoy = 0;
 
@@ -106,7 +101,7 @@ export class DashboardAdminService {
     }
 
     const turnosConTiempoAyer = turnosAyer.filter(
-      t => t.estado === EstadoTurno.ATENDIDO && t.llamado_en,
+      (t) => t.estado === EstadoTurno.ATENDIDO && t.llamado_en,
     );
     let tiempoPromedioAyer = 0;
 
@@ -123,14 +118,10 @@ export class DashboardAdminService {
     return {
       atendidos: atendidosHoy,
       cambio_porcentaje:
-        atendidosAyer > 0
-          ? ((atendidosHoy - atendidosAyer) / atendidosAyer) * 100
-          : 0,
+        atendidosAyer > 0 ? ((atendidosHoy - atendidosAyer) / atendidosAyer) * 100 : 0,
       en_sistema: enSistemaHoy,
       cambio_sistema_porcentaje:
-        enSistemaAyer > 0
-          ? ((enSistemaHoy - enSistemaAyer) / enSistemaAyer) * 100
-          : 0,
+        enSistemaAyer > 0 ? ((enSistemaHoy - enSistemaAyer) / enSistemaAyer) * 100 : 0,
       tiempo_promedio: tiempoPromedioHoy,
       cambio_tiempo_minutos: tiempoPromedioHoy - tiempoPromedioAyer,
       satisfaccion,
@@ -174,10 +165,7 @@ export class DashboardAdminService {
   /**
    * Calcula distribución semanal por nivel
    */
-  private async calcularDistribucionSemanal(
-    hospitalId: number,
-    inicioSemana: Date,
-  ) {
+  private async calcularDistribucionSemanal(hospitalId: number, inicioSemana: Date) {
     const turnos = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
@@ -189,11 +177,11 @@ export class DashboardAdminService {
     const total = turnos.length || 1;
 
     const counts = {
-      nivel_1: turnos.filter(t => t.nivel_triage_id === 1).length,
-      nivel_2: turnos.filter(t => t.nivel_triage_id === 2).length,
-      nivel_3: turnos.filter(t => t.nivel_triage_id === 3).length,
-      nivel_4: turnos.filter(t => t.nivel_triage_id === 4).length,
-      nivel_5: turnos.filter(t => t.nivel_triage_id === 5).length,
+      nivel_1: turnos.filter((t) => t.nivel_triage_id === 1).length,
+      nivel_2: turnos.filter((t) => t.nivel_triage_id === 2).length,
+      nivel_3: turnos.filter((t) => t.nivel_triage_id === 3).length,
+      nivel_4: turnos.filter((t) => t.nivel_triage_id === 4).length,
+      nivel_5: turnos.filter((t) => t.nivel_triage_id === 5).length,
     };
 
     return {
@@ -210,7 +198,6 @@ export class DashboardAdminService {
     };
   }
 
-
   /**
    * Calcula rendimiento del sistema de IA
    */
@@ -223,20 +210,24 @@ export class DashboardAdminService {
         },
       },
       include: {
-        registro_triage: true,
+        registro_triage: {
+          include: {
+            evaluacion_preliminar: true, 
+          },
+        },
       },
     });
 
     const total = confirmaciones.length || 1;
-    const aceptadas = confirmaciones.filter(c => c.acepto_sugerencia).length;
+    const aceptadas = confirmaciones.filter((c) => c.acepto_sugerencia).length;
+
 
     const conOllama = confirmaciones.filter(
-      c => c.registro_triage.cuestionario?.requirio_ollama,
+      (c) => c.registro_triage.evaluacion_preliminar !== null,
     );
-    const ollamaCorrectos = conOllama.filter(c => c.acepto_sugerencia).length;
+    const ollamaCorrectos = conOllama.filter((c) => c.acepto_sugerencia).length;
     const precisionOllama =
       conOllama.length > 0 ? (ollamaCorrectos / conOllama.length) * 100 : 0;
-
 
     const precisionRF = (aceptadas / total) * 100;
 
@@ -256,14 +247,13 @@ export class DashboardAdminService {
    * Construye matriz de confusión
    */
   private construirMatrizConfusion(confirmaciones: any[]) {
-
     const matriz = Array(5)
       .fill(0)
       .map(() => Array(5).fill(0));
 
     for (const conf of confirmaciones) {
-      const predicho = conf.nivel_sugerido_ollama - 1;
-      const real = conf.nivel_final_enfermero - 1; 
+      const predicho = conf.nivel_sugerido_ia - 1; 
+      const real = conf.nivel_final_enfermero - 1;
 
       if (predicho >= 0 && predicho < 5 && real >= 0 && real < 5) {
         matriz[predicho][real]++;
@@ -286,12 +276,12 @@ export class DashboardAdminService {
       if (!conf.acepto_sugerencia && conf.razon_modificacion) {
         const razon = conf.razon_modificacion;
         const tipo =
-          conf.nivel_final_enfermero < conf.nivel_sugerido_ollama
+          conf.nivel_final_enfermero < conf.nivel_sugerido_ia 
             ? 'ESCALAMIENTO'
             : 'DEGRADACIÓN';
 
         if (factoresMap.has(razon)) {
-          factoresMap.get(razon).count++;
+          factoresMap.get(razon)!.count++;  
         } else {
           factoresMap.set(razon, { count: 1, tipo });
         }
@@ -309,7 +299,6 @@ export class DashboardAdminService {
 
     return factores;
   }
-
 
   /**
    * Calcula análisis de tiempos
@@ -393,57 +382,9 @@ export class DashboardAdminService {
    * Detecta cuellos de botella en el proceso
    */
   private async detectarCuellosDeBottella(hospitalId: number, inicioSemana: Date) {
-    const turnos = await this.prisma.turnos.findMany({
-      where: {
-        hospital_id: hospitalId,
-        fecha: { gte: inicioSemana },
-        estado: EstadoTurno.ATENDIDO,
-      },
-      include: {
-        cuestionario: true,
-        registro_triage: true,
-        confirmaciones_enfermero: true,
-      },
-    });
-
-    if (turnos.length === 0) return [];
-
-    let sumaCuestionarioVitales = 0;
-    let countCuestionarioVitales = 0;
-    let sumaVitalesConfirmacion = 0;
-    let countVitalesConfirmacion = 0;
-
-    for (const turno of turnos) {
-      if (turno.cuestionario?.creado_en && turno.registro_triage?.creado_en) {
-        const diff =
-          turno.registro_triage.creado_en.getTime() -
-          turno.cuestionario.creado_en.getTime();
-        sumaCuestionarioVitales += diff;
-        countCuestionarioVitales++;
-      }
-
-      if (
-        turno.registro_triage?.creado_en &&
-        turno.confirmaciones_enfermero?.[0]?.creado_en
-      ) {
-        const diff =
-          turno.confirmaciones_enfermero[0].creado_en.getTime() -
-          turno.registro_triage.creado_en.getTime();
-        sumaVitalesConfirmacion += diff;
-        countVitalesConfirmacion++;
-      }
-    }
-
-    const promedioCuestionarioVitales =
-      countCuestionarioVitales > 0
-        ? Math.floor(sumaCuestionarioVitales / countCuestionarioVitales / 60000)
-        : 0;
-
-    const promedioVitalesConfirmacion =
-      countVitalesConfirmacion > 0
-        ? Math.floor(sumaVitalesConfirmacion / countVitalesConfirmacion / 60000)
-        : 0;
-
+    // TODO: Implementar detección de cuellos de botella con evaluaciones_preliminares
+    // Por ahora retornamos array vacío ya que requiere joins complejos
+    
     const cuellos: Array<{
       etapa: string;
       tiempo_actual: number;
@@ -451,33 +392,15 @@ export class DashboardAdminService {
       recomendacion: string;
     }> = [];
 
-    if (promedioCuestionarioVitales > 10) {
-      cuellos.push({
-        etapa: 'Cuestionario → Vitales',
-        tiempo_actual: promedioCuestionarioVitales,
-        tiempo_objetivo: 8,
-        recomendacion: 'Considerar añadir enfermeros en turno de alta demanda',
-      });
-    }
-
-    if (promedioVitalesConfirmacion > 8) {
-      cuellos.push({
-        etapa: 'Vitales → Confirmación',
-        tiempo_actual: promedioVitalesConfirmacion,
-        tiempo_objetivo: 5,
-        recomendacion: 'Optimizar proceso de confirmación de triage',
-      });
-    }
+    this.logger.debug('Detección de cuellos de botella pendiente de implementar');
 
     return cuellos;
   }
-
 
   /**
    * Calcula análisis de personal
    */
   private async calcularAnalisisPersonal(hospitalId: number, inicioSemana: Date) {
-    // Productividad de médicos
     const productividadMedicos = await this.calcularProductividadMedicos(
       hospitalId,
       inicioSemana,
@@ -497,34 +420,28 @@ export class DashboardAdminService {
   /**
    * Calcula productividad de médicos (pacientes/hora)
    */
-  private async calcularProductividadMedicos(
-    hospitalId: number,
-    inicioSemana: Date,
-  ) {
+  private async calcularProductividadMedicos(hospitalId: number, inicioSemana: Date) {
     const medicos = await this.prisma.medicos.findMany({
       where: {
         activo: true,
-        usuarios: {
-          hospital_usuario: {
-            some: { hospital_id: hospitalId },
-          },
-        },
-      },
-      include: {
-        usuarios: true,
       },
     });
 
     const productividad: Array<{
-      medico_id: number;
+      medico_id: string;  
       nombre: string;
       pacientes_por_hora: number;
       total_atendidos: number;
     }> = [];
 
     for (const medico of medicos) {
+      const usuario = await this.prisma.usuarios.findUnique({
+        where: { id: medico.usuario_id },
+      });
+
       const turnos = await this.prisma.turnos.findMany({
         where: {
+          hospital_id: hospitalId, 
           medico_id: medico.id,
           estado: EstadoTurno.ATENDIDO,
           fecha: { gte: inicioSemana },
@@ -534,6 +451,7 @@ export class DashboardAdminService {
       });
 
       if (turnos.length === 0) continue;
+
       let tiempoTotalMs = 0;
       for (const turno of turnos) {
         tiempoTotalMs += turno.finalizado_en.getTime() - turno.llamado_en.getTime();
@@ -545,13 +463,12 @@ export class DashboardAdminService {
 
       productividad.push({
         medico_id: medico.id,
-        nombre: `${medico.usuarios.nombre} ${medico.usuarios.apellido}`,
+        nombre: usuario ? `${usuario.nombre} ${usuario.apellido}` : 'Desconocido',
         pacientes_por_hora: parseFloat(pacientesPorHora.toFixed(1)),
         total_atendidos: turnos.length,
       });
     }
 
-    // Ordenar por productividad
     productividad.sort((a, b) => b.pacientes_por_hora - a.pacientes_por_hora);
 
     return productividad;
@@ -560,47 +477,44 @@ export class DashboardAdminService {
   /**
    * Calcula precisión de enfermeros
    */
-  private async calcularPrecisionEnfermeros(
-    hospitalId: number,
-    inicioSemana: Date,
-  ) {
+  private async calcularPrecisionEnfermeros(hospitalId: number, inicioSemana: Date) {
     const enfermeros = await this.prisma.enfermeros.findMany({
       where: {
         activo: true,
-        usuarios: {
-          hospital_usuario: {
-            some: { hospital_id: hospitalId },
-          },
-        },
-      },
-      include: {
-        usuarios: true,
       },
     });
 
     const precisiones: Array<{
-      enfermero_id: number;
+      enfermero_id: string; 
       nombre: string;
       precision: number;
       evaluaciones_realizadas: number;
     }> = [];
 
     for (const enfermero of enfermeros) {
+      // Obtener usuario del enfermero
+      const usuario = await this.prisma.usuarios.findUnique({
+        where: { id: enfermero.usuario_id },
+      });
+
       const confirmaciones = await this.prisma.confirmaciones_enfermero.findMany({
         where: {
           enfermero_id: enfermero.id,
           creado_en: { gte: inicioSemana },
+          registro_triage: {
+            hospital_id: hospitalId,
+          },
         },
       });
 
       if (confirmaciones.length === 0) continue;
 
-      const aceptadas = confirmaciones.filter(c => c.acepto_sugerencia).length;
+      const aceptadas = confirmaciones.filter((c) => c.acepto_sugerencia).length;
       const precision = (aceptadas / confirmaciones.length) * 100;
 
       precisiones.push({
         enfermero_id: enfermero.id,
-        nombre: `${enfermero.usuarios.nombre} ${enfermero.usuarios.apellido}`,
+        nombre: usuario ? `${usuario.nombre} ${usuario.apellido}` : 'Desconocido',
         precision: parseFloat(precision.toFixed(1)),
         evaluaciones_realizadas: confirmaciones.length,
       });

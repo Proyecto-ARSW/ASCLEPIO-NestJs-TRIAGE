@@ -1,8 +1,8 @@
 // src/modules/confirmacion/confirmacion.controller.ts
 
 import { Controller, Post, Get, Param, Body, Query, ParseIntPipe } from '@nestjs/common';
-import { ConfirmacionService } from './confirmacion.service';
-import { ConfirmarTriageDto } from './dto/confirmar-triage.dto';
+import { ConfirmacionService } from '../services/confirmacion.service';
+import { ConfirmarTriageDto } from '../dto/confirmar-triage.dto';
 
 @Controller('confirmaciones')
 export class ConfirmacionController {

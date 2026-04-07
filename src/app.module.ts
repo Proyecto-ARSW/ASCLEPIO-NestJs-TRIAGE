@@ -14,7 +14,7 @@ import redisConfig from './config/redis.config';
 import rabbitmqConfig from './config/rabbitmq.config';
 
 // Módulos core
-import { PrismaModule } from './prisma/prisma.module';
+import { PrismaModule } from './modules/prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 
 // Módulos de feature

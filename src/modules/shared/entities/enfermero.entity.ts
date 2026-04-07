@@ -1,6 +1,6 @@
-// src/modules/shared/entities/enfermero.entity.ts
-
-import { Field, ObjectType } from '@nestjs/graphql';
+import { Field, ObjectType, Int } from '@nestjs/graphql';
+import { Usuario } from './usuario.entity';
+import { Formacion } from './formacion.entity';
 
 @ObjectType()
 export class Enfermero {
@@ -30,7 +30,7 @@ export class Enfermero {
 
   @Field()
   creado_en: Date;
-  
+
   @Field(() => Usuario, { nullable: true })
   usuario?: Usuario;
 

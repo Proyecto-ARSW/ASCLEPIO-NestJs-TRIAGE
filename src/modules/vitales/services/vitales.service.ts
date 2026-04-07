@@ -1,13 +1,13 @@
-// src/modules/vitales/vitales.service.ts
+// src/modules/vitales/services/vitales.service.ts
 
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { TriageEventPublisher } from '../eventos/publishers/triage-event.publisher';
-import { TriageGateway } from '../websockets/triage.gateway';
-import { ClassifierGatewayService } from './services/classifier-gateway.service';
-import { RegistrarVitalesDto } from './dto/registrar-vitales.dto';
-import { VitalesResponseDto } from './dto/vitales-response.dto';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
+import { ClassifierGatewayService } from '../services/classifier-gateway.service';
+import { RegistrarVitalesDto } from '../dto/registrar-vitales.dto';
+import { VitalesResponseDto } from '../dto/vitales-response.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { TriageEventPublisher } from '../../eventos/publishers/triage-event.publisher';
+import { TriageGateway } from '../../websockets/gateways/triage.gateway';
 
 @Injectable()
 export class VitalesService {
@@ -16,6 +16,7 @@ export class VitalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly classifierGateway: ClassifierGatewayService,
+  
     private readonly eventPublisher: TriageEventPublisher,
     private readonly triageGateway: TriageGateway,
   ) {}
@@ -25,7 +26,7 @@ export class VitalesService {
    */
   async registrarVitales(dto: RegistrarVitalesDto): Promise<VitalesResponseDto> {
     const tiempoInicio = Date.now();
-    
+
     this.logger.log(`Registrando vitales - Turno: ${dto.turno_id}`);
 
     // 1. Validar que el turno exista y esté en el estado correcto
@@ -39,7 +40,7 @@ export class VitalesService {
 
     if (turno.estado !== 'ESPERANDO_VITALES') {
       throw new BadRequestException(
-        `El turno no está esperando vitales (estado actual: ${turno.estado})`
+        `El turno no está esperando vitales (estado actual: ${turno.estado})`,
       );
     }
 
@@ -50,7 +51,7 @@ export class VitalesService {
 
     if (!evaluacion) {
       throw new NotFoundException(
-        `No se encontró evaluación preliminar para el turno ${dto.turno_id}`
+        `No se encontró evaluación preliminar para el turno ${dto.turno_id}`,
       );
     }
 
@@ -66,7 +67,7 @@ export class VitalesService {
       embarazo: evaluacion.embarazo,
       antecedentes: evaluacion.antecedentes,
       nivel_preliminar: evaluacion.nivel_prioridad,
-      
+
       // Signos vitales
       presion_sistolica: dto.presion_sistolica,
       presion_diastolica: dto.presion_diastolica,
@@ -74,7 +75,7 @@ export class VitalesService {
       frecuencia_respiratoria: dto.frecuencia_respiratoria,
       temperatura: dto.temperatura,
       saturacion_oxigeno: dto.saturacion_oxigeno,
-      
+
       // Campos calculados
       presion_arterial_media: pam,
       shock_index: shockIndex,
@@ -84,9 +85,9 @@ export class VitalesService {
     let clasificacion;
     try {
       clasificacion = await this.classifierGateway.clasificar(payloadRF);
-    } catch (error) {
-      this.logger.error(`Error al llamar al clasificador: ${error.message}`);
-      
+    } catch (error: any) {
+      this.logger.error(`Error al llamar al clasificador: ${error?.message || error}`);
+
       // Fallback: usar nivel preliminar + detección simple de alertas
       clasificacion = this.fallbackClasificacion(evaluacion.nivel_prioridad, tieneAlertas);
     }
@@ -118,28 +119,28 @@ export class VitalesService {
         nivel_sugerido_ia: clasificacion.nivel_sugerido,
         confianza_ia: new Decimal(clasificacion.confianza.toFixed(4)),
         comentarios_ia: clasificacion.comentarios || null,
-        
+
         // Probabilidades
-        probabilidad_nivel_1: clasificacion.probabilidades?.nivel_1 
-          ? new Decimal(clasificacion.probabilidades.nivel_1.toFixed(4)) 
+        probabilidad_nivel_1: clasificacion.probabilidades?.nivel_1
+          ? new Decimal(clasificacion.probabilidades.nivel_1.toFixed(4))
           : null,
-        probabilidad_nivel_2: clasificacion.probabilidades?.nivel_2 
-          ? new Decimal(clasificacion.probabilidades.nivel_2.toFixed(4)) 
+        probabilidad_nivel_2: clasificacion.probabilidades?.nivel_2
+          ? new Decimal(clasificacion.probabilidades.nivel_2.toFixed(4))
           : null,
-        probabilidad_nivel_3: clasificacion.probabilidades?.nivel_3 
-          ? new Decimal(clasificacion.probabilidades.nivel_3.toFixed(4)) 
+        probabilidad_nivel_3: clasificacion.probabilidades?.nivel_3
+          ? new Decimal(clasificacion.probabilidades.nivel_3.toFixed(4))
           : null,
-        probabilidad_nivel_4: clasificacion.probabilidades?.nivel_4 
-          ? new Decimal(clasificacion.probabilidades.nivel_4.toFixed(4)) 
+        probabilidad_nivel_4: clasificacion.probabilidades?.nivel_4
+          ? new Decimal(clasificacion.probabilidades.nivel_4.toFixed(4))
           : null,
-        probabilidad_nivel_5: clasificacion.probabilidades?.nivel_5 
-          ? new Decimal(clasificacion.probabilidades.nivel_5.toFixed(4)) 
+        probabilidad_nivel_5: clasificacion.probabilidades?.nivel_5
+          ? new Decimal(clasificacion.probabilidades.nivel_5.toFixed(4))
           : null,
 
         // Features importantes (ML interpretability)
         feature_mas_importante: clasificacion.feature_mas_importante || null,
-        valor_feature_importante: clasificacion.valor_feature_importante 
-          ? new Decimal(clasificacion.valor_feature_importante.toFixed(4)) 
+        valor_feature_importante: clasificacion.valor_feature_importante
+          ? new Decimal(clasificacion.valor_feature_importante.toFixed(4))
           : null,
 
         // Info adicional
@@ -161,20 +162,32 @@ export class VitalesService {
     });
 
     this.logger.log(
-      `Vitales registrados - ID: ${registro.id}, Nivel sugerido: ${clasificacion.nivel_sugerido}`
+      `Vitales registrados - ID: ${registro.id}, Nivel sugerido: ${clasificacion.nivel_sugerido}`,
     );
 
-    // 8. Publicar evento RabbitMQ
+    
     await this.eventPublisher.publishVitalesRegistrados({
-      registro_id: registro.id,
       turno_id: dto.turno_id,
-      nivel_sugerido_ia: clasificacion.nivel_sugerido,
-      hospital_id: dto.hospital_id,
+      registro_triage_id: registro.id,
+      cuestionario_id: evaluacion.id,
       paciente_id: dto.paciente_id,
-      tiene_alertas: tieneAlertas,
+      hospital_id: dto.hospital_id,
+      enfermero_id: dto.enfermero_id,
+      nivel_sugerido_ia: clasificacion.nivel_sugerido,
+      confianza_ia: clasificacion.confianza,
+      vitales: {
+        presion_sistolica: dto.presion_sistolica,
+        presion_diastolica: dto.presion_diastolica,
+        frecuencia_cardiaca: dto.frecuencia_cardiaca,
+        frecuencia_respiratoria: dto.frecuencia_respiratoria,
+        temperatura: dto.temperatura,
+        saturacion_oxigeno: dto.saturacion_oxigeno,
+      },
+      alertas_vitales: [],
     });
+  
 
-    // 9. WebSocket
+
     this.triageGateway.emitToHospital(dto.hospital_id, 'vitales:registrados', {
       turno_id: dto.turno_id,
       numero_turno: turno.numero_turno,
@@ -182,6 +195,7 @@ export class VitalesService {
       confianza: clasificacion.confianza,
       tiene_alertas: tieneAlertas,
     });
+
 
     return registro as any as VitalesResponseDto;
   }
@@ -208,9 +222,9 @@ export class VitalesService {
   private detectarAlertasVitales(
     vitales: RegistrarVitalesDto,
     pam: number,
-    shockIndex: number
+    shockIndex: number,
   ): boolean {
-    const alertas = [];
+    const alertas: string[] = [];
 
     // Hipotensión (PAM < 65 mmHg)
     if (pam < 65) {
@@ -263,7 +277,8 @@ export class VitalesService {
     return {
       nivel_sugerido,
       confianza: 0.5, // Baja confianza porque es fallback
-      comentarios: 'Clasificación por fallback (Random Forest no disponible). Nivel basado en evaluación preliminar y alertas vitales.',
+      comentarios:
+        'Clasificación por fallback (Random Forest no disponible). Nivel basado en evaluación preliminar y alertas vitales.',
       probabilidades: null,
     };
   }
@@ -277,11 +292,7 @@ export class VitalesService {
       include: {
         evaluacion_preliminar: true,
         pacientes: true,
-        enfermeros: {
-          include: {
-            usuarios: true,
-          },
-        },
+        enfermeros: true,
       },
     });
 
@@ -303,11 +314,7 @@ export class VitalesService {
           include: {
             evaluacion_preliminar: true,
             pacientes: true,
-            enfermeros: {
-              include: {
-                usuarios: true,
-              },
-            },
+            enfermeros: true,
           },
         },
       },

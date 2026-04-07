@@ -1,10 +1,9 @@
 // src/modules/dashboard/services/dashboard-jefe-guardia.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
-import { MetricasIAService } from '@/modules/confirmacion/services/metricas-ia.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
 import { DashboardJefeGuardia } from '../dto/dashboard-jefe-guardia.dto';
-import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
+import { EstadoTurno } from 'src/modules/turnos/entities/turno.entity';
 
 @Injectable()
 export class DashboardJefeGuardiaService {
@@ -12,7 +11,8 @@ export class DashboardJefeGuardiaService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly metricasIAService: MetricasIAService,
+    // COMENTADO TEMPORALMENTE: MetricasIAService no está implementado
+    // private readonly metricasIAService: MetricasIAService,
   ) {}
 
   /**
@@ -23,6 +23,7 @@ export class DashboardJefeGuardiaService {
 
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
+
     const alertasEscaladas = await this.prisma.alertas_criticas.findMany({
       where: {
         hospital_id: hospitalId,
@@ -30,11 +31,9 @@ export class DashboardJefeGuardiaService {
         activa: true,
       },
       include: {
-        turnos: {
+        turno: { 
           include: {
-            pacientes: {
-              include: { usuarios: true },
-            },
+            pacientes: true, 
           },
         },
       },
@@ -42,6 +41,28 @@ export class DashboardJefeGuardiaService {
         escalada_en: 'asc',
       },
     });
+
+    const alertasConUsuarios = await Promise.all(
+      alertasEscaladas.map(async (alerta) => {
+        if (alerta.turno?.pacientes) {
+          const usuario = await this.prisma.usuarios.findUnique({
+            where: { id: alerta.turno.pacientes.usuario_id },
+          });
+
+          return {
+            ...alerta,
+            turno: {
+              ...alerta.turno,
+              pacientes: {
+                ...alerta.turno.pacientes,
+                usuarios: usuario,
+              },
+            },
+          };
+        }
+        return alerta;
+      }),
+    );
 
     const metricasTiempoReal = await this.calcularMetricasTiempoReal(hospitalId, hoy);
 
@@ -52,25 +73,25 @@ export class DashboardJefeGuardiaService {
     const enfermeros = await this.obtenerEstadoEnfermeros(hospitalId);
     const medicos = await this.obtenerEstadoMedicos(hospitalId);
 
-    const metricasIA = await this.metricasIAService.calcularMetricasIA(hospitalId, hoy);
+    const metricasIA = {
+      precision_global: 0,
+      precision_nivel_1: 0,
+      precision_nivel_2: 0,
+      precision_nivel_3: 0,
+      precision_nivel_4: 0,
+      precision_nivel_5: 0,
+      escalamientos: 0,
+      degradaciones: 0,
+    };
 
     return {
-      alertas_escaladas: alertasEscaladas as any,
+      alertas_escaladas: alertasConUsuarios as any,
       metricas_tiempo_real: metricasTiempoReal,
       distribucion_niveles: distribucionNiveles,
       tiempos_promedio: tiemposPromedio,
       enfermeros,
       medicos,
-      metricas_ia: {
-        precision_global: metricasIA.precision_general,
-        precision_nivel_1: metricasIA.precision_nivel_1,
-        precision_nivel_2: metricasIA.precision_nivel_2,
-        precision_nivel_3: metricasIA.precision_nivel_3,
-        precision_nivel_4: metricasIA.precision_nivel_4,
-        precision_nivel_5: metricasIA.precision_nivel_5,
-        escalamientos: metricasIA.escalamientos,
-        degradaciones: metricasIA.degradaciones,
-      },
+      metricas_ia: metricasIA,
     };
   }
 
@@ -86,10 +107,10 @@ export class DashboardJefeGuardiaService {
     });
 
     return {
-      en_espera: turnos.filter(t => t.estado === EstadoTurno.EN_ESPERA).length,
-      atendiendo: turnos.filter(t => t.estado === EstadoTurno.EN_CONSULTA).length,
-      atendidos: turnos.filter(t => t.estado === EstadoTurno.ATENDIDO).length,
-      cancelados: turnos.filter(t => t.estado === EstadoTurno.CANCELADO).length,
+      en_espera: turnos.filter((t) => t.estado === EstadoTurno.EN_ESPERA).length,
+      atendiendo: turnos.filter((t) => t.estado === EstadoTurno.EN_CONSULTA).length,
+      atendidos: turnos.filter((t) => t.estado === EstadoTurno.ATENDIDO).length,
+      cancelados: turnos.filter((t) => t.estado === EstadoTurno.CANCELADO).length,
     };
   }
 
@@ -108,11 +129,11 @@ export class DashboardJefeGuardiaService {
     const total = turnos.length || 1;
 
     const counts = {
-      nivel_1: turnos.filter(t => t.nivel_triage_id === 1).length,
-      nivel_2: turnos.filter(t => t.nivel_triage_id === 2).length,
-      nivel_3: turnos.filter(t => t.nivel_triage_id === 3).length,
-      nivel_4: turnos.filter(t => t.nivel_triage_id === 4).length,
-      nivel_5: turnos.filter(t => t.nivel_triage_id === 5).length,
+      nivel_1: turnos.filter((t) => t.nivel_triage_id === 1).length,
+      nivel_2: turnos.filter((t) => t.nivel_triage_id === 2).length,
+      nivel_3: turnos.filter((t) => t.nivel_triage_id === 3).length,
+      nivel_4: turnos.filter((t) => t.nivel_triage_id === 4).length,
+      nivel_5: turnos.filter((t) => t.nivel_triage_id === 5).length,
     };
 
     return {
@@ -139,11 +160,6 @@ export class DashboardJefeGuardiaService {
         fecha: { gte: fecha },
         estado: EstadoTurno.ATENDIDO,
       },
-      include: {
-        cuestionario: true,
-        registro_triage: true,
-        confirmaciones_enfermero: true,
-      },
     });
 
     if (turnos.length === 0) {
@@ -156,47 +172,15 @@ export class DashboardJefeGuardiaService {
       };
     }
 
-    let sumaCuestionarioVitales = 0;
-    let sumaVitalesConfirmacion = 0;
-    let sumaConfirmacionLlamado = 0;
+    // TODO: Implementar cálculos de tiempos con evaluaciones_preliminares
+    // Por ahora retornamos valores simplificados
+
     let sumaTotalEspera = 0;
     let sumaTiempoAtencion = 0;
-
-    let countCuestionarioVitales = 0;
-    let countVitalesConfirmacion = 0;
-    let countConfirmacionLlamado = 0;
     let countTotalEspera = 0;
     let countTiempoAtencion = 0;
 
     for (const turno of turnos) {
-
-      if (turno.cuestionario?.creado_en && turno.registro_triage?.creado_en) {
-        const diff =
-          turno.registro_triage.creado_en.getTime() -
-          turno.cuestionario.creado_en.getTime();
-        sumaCuestionarioVitales += diff;
-        countCuestionarioVitales++;
-      }
-
-      if (
-        turno.registro_triage?.creado_en &&
-        turno.confirmaciones_enfermero?.[0]?.creado_en
-      ) {
-        const diff =
-          turno.confirmaciones_enfermero[0].creado_en.getTime() -
-          turno.registro_triage.creado_en.getTime();
-        sumaVitalesConfirmacion += diff;
-        countVitalesConfirmacion++;
-      }
-
-      if (turno.confirmaciones_enfermero?.[0]?.creado_en && turno.llamado_en) {
-        const diff =
-          turno.llamado_en.getTime() -
-          turno.confirmaciones_enfermero[0].creado_en.getTime();
-        sumaConfirmacionLlamado += diff;
-        countConfirmacionLlamado++;
-      }
-
       if (turno.llamado_en) {
         const diff = turno.llamado_en.getTime() - turno.creado_en.getTime();
         sumaTotalEspera += diff;
@@ -211,15 +195,9 @@ export class DashboardJefeGuardiaService {
     }
 
     return {
-      cuestionario_a_vitales: countCuestionarioVitales
-        ? Math.floor(sumaCuestionarioVitales / countCuestionarioVitales / 60000)
-        : 0,
-      vitales_a_confirmacion: countVitalesConfirmacion
-        ? Math.floor(sumaVitalesConfirmacion / countVitalesConfirmacion / 60000)
-        : 0,
-      confirmacion_a_llamado: countConfirmacionLlamado
-        ? Math.floor(sumaConfirmacionLlamado / countConfirmacionLlamado / 60000)
-        : 0,
+      cuestionario_a_vitales: 0,  // TODO: Implementar
+      vitales_a_confirmacion: 0,  // TODO: Implementar
+      confirmacion_a_llamado: 0,  // TODO: Implementar
       total_espera: countTotalEspera
         ? Math.floor(sumaTotalEspera / countTotalEspera / 60000)
         : 0,
@@ -233,31 +211,25 @@ export class DashboardJefeGuardiaService {
    * Obtiene estado de enfermeros
    */
   private async obtenerEstadoEnfermeros(hospitalId: number) {
+    // REMOVIDO: filtro por hospital_usuario (no existe)
     const enfermeros = await this.prisma.enfermeros.findMany({
       where: {
         activo: true,
-        usuarios: {
-          hospital_usuario: {
-            some: { hospital_id: hospitalId },
-          },
-        },
-      },
-      include: {
-        usuarios: true,
       },
     });
 
-    // Verificar si están atendiendo un turno actualmente
     const enfermeroEstados = await Promise.all(
-      enfermeros.map(async enfermero => {
+      enfermeros.map(async (enfermero) => {
+        const usuario = await this.prisma.usuarios.findUnique({
+          where: { id: enfermero.usuario_id },
+        });
+
         const ultimoTurno = await this.prisma.turnos.findFirst({
           where: {
+            hospital_id: hospitalId, 
             enfermero_triage_id: enfermero.id,
             estado: {
-              in: [
-                EstadoTurno.ESPERANDO_VITALES,
-                EstadoTurno.TRIAGE_COMPLETO,
-              ],
+              in: [EstadoTurno.ESPERANDO_VITALES, EstadoTurno.TRIAGE_COMPLETO],
             },
           },
           orderBy: { actualizado_en: 'desc' },
@@ -265,12 +237,10 @@ export class DashboardJefeGuardiaService {
 
         return {
           id: enfermero.id,
-          nombre: `${enfermero.usuarios.nombre} ${enfermero.usuarios.apellido}`,
+          nombre: usuario ? `${usuario.nombre} ${usuario.apellido}` : 'Desconocido',
           rol: 'ENFERMERO',
           estado: ultimoTurno ? 'OCUPADO' : 'DISPONIBLE',
-          turno_actual: ultimoTurno
-            ? `Turno #${ultimoTurno.numero_turno}`
-            : undefined,
+          turno_actual: ultimoTurno ? `Turno #${ultimoTurno.numero_turno}` : undefined,
         };
       }),
     );
@@ -285,21 +255,18 @@ export class DashboardJefeGuardiaService {
     const medicos = await this.prisma.medicos.findMany({
       where: {
         activo: true,
-        usuarios: {
-          hospital_usuario: {
-            some: { hospital_id: hospitalId },
-          },
-        },
-      },
-      include: {
-        usuarios: true,
       },
     });
 
     const medicoEstados = await Promise.all(
-      medicos.map(async medico => {
+      medicos.map(async (medico) => {
+        const usuario = await this.prisma.usuarios.findUnique({
+          where: { id: medico.usuario_id },
+        });
+
         const turnoActual = await this.prisma.turnos.findFirst({
           where: {
+            hospital_id: hospitalId,
             medico_id: medico.id,
             estado: EstadoTurno.EN_CONSULTA,
           },
@@ -307,12 +274,10 @@ export class DashboardJefeGuardiaService {
 
         return {
           id: medico.id,
-          nombre: `${medico.usuarios.nombre} ${medico.usuarios.apellido}`,
+          nombre: usuario ? `${usuario.nombre} ${usuario.apellido}` : 'Desconocido',
           rol: 'MEDICO',
           estado: turnoActual ? 'OCUPADO' : 'DISPONIBLE',
-          turno_actual: turnoActual
-            ? `Turno #${turnoActual.numero_turno}`
-            : undefined,
+          turno_actual: turnoActual ? `Turno #${turnoActual.numero_turno}` : undefined,
           consultorio: medico.consultorio,
         };
       }),

@@ -1,7 +1,7 @@
 // src/modules/turnos/services/generador-numero.service.ts
 
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from '@/modules/prisma/prisma.service';
 import { TipoTurno } from '../entities/turno.entity';
 
 @Injectable()

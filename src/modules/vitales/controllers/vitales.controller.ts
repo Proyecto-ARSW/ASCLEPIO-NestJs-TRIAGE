@@ -1,8 +1,8 @@
 // src/modules/vitales/vitales.controller.ts
 
 import { Controller, Post, Get, Param, Body } from '@nestjs/common';
-import { VitalesService } from './vitales.service';
-import { RegistrarVitalesDto } from './dto/registrar-vitales.dto';
+import { VitalesService } from '../services/vitales.service';
+import { RegistrarVitalesDto } from '../dto/registrar-vitales.dto';
 
 @Controller('vitales')
 export class VitalesController {

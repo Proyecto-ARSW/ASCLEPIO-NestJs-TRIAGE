@@ -2,10 +2,10 @@
 
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { VitalesController } from './vitales.controller';
-import { VitalesService } from './vitales.service';
+import { VitalesController } from './controllers/vitales.controller';
+import { VitalesService } from './services/vitales.service';
 import { ClassifierGatewayService } from './services/classifier-gateway.service';
-import { PrismaModule } from '../../prisma/prisma.module';
+import { PrismaModule } from 'src/modules/prisma/prisma.module';
 
 @Module({
   imports: [

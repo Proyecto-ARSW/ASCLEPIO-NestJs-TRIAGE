@@ -1,9 +1,9 @@
 // src/modules/dashboard/services/dashboard-medico.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
 import { DashboardMedico } from '../dto/dashboard-medico.dto';
-import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
+import { EstadoTurno } from 'src/modules/turnos/entities/turno.entity';
 
 @Injectable()
 export class DashboardMedicoService {
@@ -32,11 +32,9 @@ export class DashboardMedicoService {
         confirmada: false,
       },
       include: {
-        turnos: {
+        turno: {  
           include: {
-            pacientes: {
-              include: { usuarios: true },
-            },
+            pacientes: true,  
             nivel_triage: true,
           },
         },
@@ -45,6 +43,29 @@ export class DashboardMedicoService {
         creado_en: 'asc',
       },
     });
+
+    // Agregar usuarios a las alertas
+    const alertasConUsuarios = await Promise.all(
+      alertasPendientes.map(async (alerta) => {
+        if (alerta.turno?.pacientes) {
+          const usuario = await this.prisma.usuarios.findUnique({
+            where: { id: alerta.turno.pacientes.usuario_id },
+          });
+
+          return {
+            ...alerta,
+            turno: {
+              ...alerta.turno,
+              pacientes: {
+                ...alerta.turno.pacientes,
+                usuarios: usuario,
+              },
+            },
+          };
+        }
+        return alerta;
+      }),
+    );
 
     let metricasPersonales = {
       atendidos_hoy: 0,
@@ -58,11 +79,10 @@ export class DashboardMedicoService {
 
     return {
       por_niveles: turnosPorNivel,
-      alertas_pendientes: alertasPendientes as any,
+      alertas_pendientes: alertasConUsuarios as any,
       metricas_personales: metricasPersonales,
     };
   }
-
 
   /**
    * Obtiene turnos organizados por nivel
@@ -75,9 +95,7 @@ export class DashboardMedicoService {
         fecha: { gte: fecha },
       },
       include: {
-        pacientes: {
-          include: { usuarios: true },
-        },
+        pacientes: true, 
         nivel_triage: true,
         registro_triage: true,
       },
@@ -86,12 +104,32 @@ export class DashboardMedicoService {
       },
     });
 
+    // Agregar usuarios a los turnos
+    const turnosConUsuarios = await Promise.all(
+      turnosEnEspera.map(async (turno) => {
+        if (turno.pacientes) {
+          const usuario = await this.prisma.usuarios.findUnique({
+            where: { id: turno.pacientes.usuario_id },
+          });
+
+          return {
+            ...turno,
+            pacientes: {
+              ...turno.pacientes,
+              usuarios: usuario,
+            },
+          };
+        }
+        return turno;
+      }),
+    );
+
     return {
-      nivel_1: turnosEnEspera.filter(t => t.nivel_triage_id === 1) as any,
-      nivel_2: turnosEnEspera.filter(t => t.nivel_triage_id === 2) as any,
-      nivel_3: turnosEnEspera.filter(t => t.nivel_triage_id === 3) as any,
-      nivel_4: turnosEnEspera.filter(t => t.nivel_triage_id === 4) as any,
-      nivel_5: turnosEnEspera.filter(t => t.nivel_triage_id === 5) as any,
+      nivel_1: turnosConUsuarios.filter((t) => t.nivel_triage_id === 1) as any,
+      nivel_2: turnosConUsuarios.filter((t) => t.nivel_triage_id === 2) as any,
+      nivel_3: turnosConUsuarios.filter((t) => t.nivel_triage_id === 3) as any,
+      nivel_4: turnosConUsuarios.filter((t) => t.nivel_triage_id === 4) as any,
+      nivel_5: turnosConUsuarios.filter((t) => t.nivel_triage_id === 5) as any,
     };
   }
 
@@ -128,14 +166,11 @@ export class DashboardMedicoService {
 
     if (turnosFinalizados.length > 0) {
       const sumaTiempos = turnosFinalizados.reduce((sum, turno) => {
-        const tiempo =
-          turno.finalizado_en.getTime() - turno.llamado_en.getTime();
+        const tiempo = turno.finalizado_en.getTime() - turno.llamado_en.getTime();
         return sum + tiempo;
       }, 0);
 
-      tiempoPromedioAtencion = Math.floor(
-        sumaTiempos / turnosFinalizados.length / 60000,
-      );
+      tiempoPromedioAtencion = Math.floor(sumaTiempos / turnosFinalizados.length / 60000);
     }
 
     return {

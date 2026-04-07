@@ -8,31 +8,35 @@ import { BaseEvent, ConsumeOptions } from '../interfaces/eventos.interface';
 @Injectable()
 export abstract class BaseConsumer implements OnModuleInit {
   protected readonly logger = new Logger(BaseConsumer.name);
-  protected connection: amqp.Connection;
-  protected channel: amqp.Channel;
+  protected connection: any = null;
+  protected channel: any = null;
   protected exchange: string;
   protected queue: string;
 
   constructor(protected configService: ConfigService) {
-    this.exchange = this.configService.get<string>('rabbitmq.exchange');
-    this.queue = this.configService.get<string>('rabbitmq.queue');
+    this.exchange = this.configService.get<string>('rabbitmq.triageExchange') || 'triage.events';
+    this.queue = this.configService.get<string>('rabbitmq.triageQueue') || 'triage.confirmado';
   }
 
   async onModuleInit() {
-    await this.connect();
-    await this.setupQueue();
-    await this.startConsuming();
+    try {
+      await this.connect();
+      await this.setupQueue();
+      await this.startConsuming();
+    } catch (error: any) {
+      this.logger.error(`Error inicializando consumer: ${error?.message || error}`);
+    }
   }
 
   /**
    * Conecta a RabbitMQ
    */
-  private async connect() {
+  private async connect(): Promise<void> {
     try {
-      const url = this.configService.get<string>('rabbitmq.url');
-      
-      this.logger.log('🔌 Consumer conectando a RabbitMQ...');
-      
+      const url = this.configService.get<string>('rabbitmq.url') || 'amqp://guest:guest@localhost:5672';
+
+      this.logger.log('Consumer conectando a RabbitMQ...');
+
       this.connection = await amqp.connect(url);
       this.channel = await this.connection.createChannel();
 
@@ -42,8 +46,8 @@ export abstract class BaseConsumer implements OnModuleInit {
       });
 
       this.logger.log(`Consumer RabbitMQ conectado - Exchange: ${this.exchange}`);
-    } catch (error) {
-      this.logger.error(`Error conectando consumer RabbitMQ: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Error conectando consumer RabbitMQ: ${error?.message || error}`);
       throw error;
     }
   }
@@ -52,6 +56,10 @@ export abstract class BaseConsumer implements OnModuleInit {
    * Configura la cola y bindings
    */
   private async setupQueue() {
+    if (!this.channel) {
+      throw new Error('Channel no inicializado');
+    }
+
     try {
       // Crear cola con Dead Letter Exchange
       await this.channel.assertQueue(this.queue, {
@@ -59,7 +67,7 @@ export abstract class BaseConsumer implements OnModuleInit {
         deadLetterExchange: `${this.exchange}.dlx`,
         deadLetterRoutingKey: 'dead-letter',
         arguments: {
-          'x-message-ttl': 86400000, // 24 horas
+          'x-message-ttl': 86400000,
         },
       });
 
@@ -71,15 +79,15 @@ export abstract class BaseConsumer implements OnModuleInit {
       await this.channel.assertQueue(dlxQueue, { durable: true });
       await this.channel.bindQueue(dlxQueue, `${this.exchange}.dlx`, 'dead-letter');
 
-      // Bindings: Qué eventos escuchar
-      const routingKeys = this.getRoutingKeys();
       
+      const routingKeys = this.getRoutingKeys();
+
       for (const routingKey of routingKeys) {
         await this.channel.bindQueue(this.queue, this.exchange, routingKey);
         this.logger.log(`Queue bound: ${this.queue} → ${routingKey}`);
       }
-    } catch (error) {
-      this.logger.error(`Error configurando queue: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Error configurando queue: ${error?.message || error}`);
       throw error;
     }
   }
@@ -88,10 +96,14 @@ export abstract class BaseConsumer implements OnModuleInit {
    * Inicia el consumo de mensajes
    */
   private async startConsuming() {
+    if (!this.channel) {
+      throw new Error('Channel no inicializado');
+    }
+
     try {
       const options: ConsumeOptions = {
-        prefetchCount: 10, // Procesar máximo 10 mensajes a la vez
-        noAck: false, // Requiere ACK manual
+        prefetchCount: 10,
+        noAck: false,
       };
 
       await this.channel.prefetch(options.prefetchCount);
@@ -99,32 +111,29 @@ export abstract class BaseConsumer implements OnModuleInit {
       await this.channel.consume(
         this.queue,
         async (msg) => {
-          if (!msg) return;
+          if (!msg || !this.channel) return;
 
           try {
             const content = msg.content.toString();
             const event: BaseEvent = JSON.parse(content);
 
-            this.logger.debug(
-              `Evento recibido: ${event.event_type} - ID: ${event.event_id}`,
-            );
+            this.logger.debug(`Evento recibido: ${event.event_type} - ID: ${event.event_id}`);
 
-            // Procesar evento (implementado por subclases)
             await this.handleEvent(event);
 
-            // ACK: Mensaje procesado exitosamente
             this.channel.ack(msg);
 
             this.logger.debug(`Evento procesado: ${event.event_type}`);
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
-              `❌ Error procesando mensaje: ${error.message}`,
-              error.stack,
+              `Error procesando mensaje: ${error?.message || error}`,
+              error?.stack,
             );
 
-            // NACK: Reintentar o enviar a DLQ
             const requeue = this.shouldRequeue(error);
-            this.channel.nack(msg, false, requeue);
+            if (this.channel) {
+              this.channel.nack(msg, false, requeue);
+            }
 
             if (!requeue) {
               this.logger.warn(`Mensaje enviado a Dead Letter Queue`);
@@ -135,35 +144,23 @@ export abstract class BaseConsumer implements OnModuleInit {
       );
 
       this.logger.log(`Consumiendo mensajes de: ${this.queue}`);
-    } catch (error) {
-      this.logger.error(`Error iniciando consumer: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Error iniciando consumer: ${error?.message || error}`);
       throw error;
     }
   }
 
-  /**
-   * Define qué routing keys escuchar (implementado por subclases)
-   */
   protected abstract getRoutingKeys(): string[];
 
-  /**
-   * Maneja un evento recibido (implementado por subclases)
-   */
   protected abstract handleEvent(event: BaseEvent): Promise<void>;
 
-  /**
-   * Decide si reintentar un mensaje fallido
-   */
   protected shouldRequeue(error: any): boolean {
-    // Errores transitorios → Requeue
-    // Errores de validación/lógica → No requeue (DLQ)
-    
     const transientErrors = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND'];
-    
-    if (transientErrors.some(err => error.message.includes(err))) {
-      return true; // Reintentar
+
+    if (transientErrors.some((err) => error?.message?.includes(err))) {
+      return true;
     }
 
-    return false; // Enviar a DLQ
+    return false;
   }
 }

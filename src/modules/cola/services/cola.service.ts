@@ -2,7 +2,7 @@
 
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { RedisService } from './redis.service';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
 import {
   ItemCola,
   ColaResumen,
@@ -36,21 +36,19 @@ export class ColaService {
     const turno = await this.prisma.turnos.findUnique({
       where: { id: turnoId },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true,  // ← Ya no incluir usuarios anidado
         nivel_triage: true,
       },
     });
 
-    if (!turno) {
+    if (!turno || !turno.pacientes) {
       throw new NotFoundException('Turno no encontrado');
     }
+
     const timestamp = new Date(turno.creado_en).getTime();
     const score = nivelTriage * 1000000 + timestamp;
     const colaKey = `hospital:${hospitalId}:cola:triage:${nivelTriage}`;
+    
     await this.redis.zadd(colaKey, score, turnoId);
 
     const metadataKey = `turno:${turnoId}`;
@@ -58,21 +56,22 @@ export class ColaService {
       turno_id: turnoId,
       numero_turno: turno.numero_turno.toString(),
       paciente_id: turno.paciente_id,
-      paciente_nombre: turno.pacientes.usuarios.nombre,
-      paciente_apellido: turno.pacientes.usuarios.apellido,
+      // Obtener nombre del paciente desde la tabla usuarios separadamente
       nivel_triage: nivelTriage.toString(),
       hospital_id: hospitalId.toString(),
       ingreso_cola: new Date().toISOString(),
       alerta_critica: (nivelTriage <= 2).toString(),
     });
+
     const posicion = await this.obtenerPosicionEnCola(turnoId, hospitalId, nivelTriage);
 
     this.logger.log(
-      `Turno agregado a cola - Posición: ${posicion + 1} en nivel ${nivelTriage}`,
+      `Turno agregado a cola - Posición: ${posicion !== null ? posicion + 1 : 'N/A'} en nivel ${nivelTriage}`,
     );
+    
     await this.publicarActualizacionCola(hospitalId);
 
-    return posicion;
+    return posicion ?? 0;
   }
 
   /**
@@ -91,7 +90,6 @@ export class ColaService {
     const metadataKey = `turno:${turnoId}`;
 
     await this.redis.zrem(colaKey, turnoId);
-
     await this.redis.del(metadataKey);
 
     this.logger.log(`Turno removido de cola`);
@@ -211,7 +209,7 @@ export class ColaService {
       }
     }
 
-    return null; 
+    return null;
   }
 
   /**
@@ -232,8 +230,8 @@ export class ColaService {
     let tiempoMax = 0;
     let totalPacientes = 0;
 
-    Object.values(cola.niveles).forEach(nivel => {
-      nivel.items.forEach(item => {
+    Object.values(cola.niveles).forEach((nivel) => {
+      nivel.items.forEach((item) => {
         tiempoTotal += item.tiempo_espera_minutos;
         if (item.tiempo_espera_minutos > tiempoMax) {
           tiempoMax = item.tiempo_espera_minutos;
@@ -297,6 +295,27 @@ export class ColaService {
       return null;
     }
 
+    // Obtener nombre del paciente desde la BD si no está en Redis
+    let pacienteNombre = metadata.paciente_nombre || 'N/A';
+    let pacienteApellido = metadata.paciente_apellido || 'N/A';
+
+    if (!metadata.paciente_nombre && metadata.paciente_id) {
+      const paciente = await this.prisma.pacientes.findUnique({
+        where: { id: metadata.paciente_id },
+      });
+      
+      if (paciente) {
+        const usuario = await this.prisma.usuarios.findUnique({
+          where: { id: paciente.usuario_id },
+        });
+        
+        if (usuario) {
+          pacienteNombre = usuario.nombre;
+          pacienteApellido = usuario.apellido;
+        }
+      }
+    }
+
     const ingresoCola = new Date(metadata.ingreso_cola);
     const ahora = new Date();
     const tiempoEsperaMs = ahora.getTime() - ingresoCola.getTime();
@@ -306,8 +325,8 @@ export class ColaService {
       turno_id: metadata.turno_id,
       numero_turno: parseInt(metadata.numero_turno),
       paciente_id: metadata.paciente_id,
-      paciente_nombre: metadata.paciente_nombre,
-      paciente_apellido: metadata.paciente_apellido,
+      paciente_nombre: pacienteNombre,
+      paciente_apellido: pacienteApellido,
       nivel_triage: parseInt(metadata.nivel_triage),
       tiempo_espera_minutos: tiempoEsperaMin,
       prioridad_score: parseInt(metadata.nivel_triage) * 1000000,

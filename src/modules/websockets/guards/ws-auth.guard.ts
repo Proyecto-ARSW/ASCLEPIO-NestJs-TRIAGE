@@ -10,7 +10,7 @@ import { AuthenticatedSocket } from '../interfaces/socket-client.interface';
 export class WsAuthGuard implements CanActivate {
   private readonly logger = new Logger(WsAuthGuard.name);
 
-  constructor(private configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
     try {
@@ -37,13 +37,13 @@ export class WsAuthGuard implements CanActivate {
 
       return true;
     } catch (error) {
-      this.logger.error(`WebSocket auth error: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`WebSocket auth error: ${message}`);
       throw new WsException('Token inválido o expirado');
     }
   }
 
   private extractTokenFromHandshake(client: AuthenticatedSocket): string | undefined {
-
     const authHeader = client.handshake?.headers?.authorization;
     if (authHeader) {
       const [type, token] = authHeader.split(' ');

@@ -2,7 +2,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseConsumer } from './base.consumer';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 import {
   BaseEvent,
   CoreEventType,
@@ -29,7 +30,6 @@ export class CoreEventConsumer extends BaseConsumer {
       CoreEventType.PACIENTE_CREADO,
       CoreEventType.PACIENTE_ACTUALIZADO,
       CoreEventType.MEDICO_ASIGNADO,
-      // 'farmacia.*', // Escuchar todos los eventos de farmacia
     ];
   }
 

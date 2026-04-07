@@ -1,18 +1,12 @@
 // src/modules/confirmacion/confirmacion.module.ts
 
 import { Module } from '@nestjs/common';
-import { ConfirmacionController } from './confirmacion.controller';
-import { ConfirmacionService } from './confirmacion.service';
-import { PrismaModule } from '../../prisma/prisma.module';
-import { ColaModule } from '../cola/cola.module';
-import { AlertasModule } from '../alertas/alertas.module';
+import { ConfirmacionController } from './controllers/confirmacion.controller';
+import { ConfirmacionService } from './services/confirmacion.service';
+import { PrismaModule } from 'src/modules/prisma/prisma.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    ColaModule,
-    AlertasModule,
-  ],
+  imports: [PrismaModule],
   controllers: [ConfirmacionController],
   providers: [ConfirmacionService],
   exports: [ConfirmacionService],

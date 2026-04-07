@@ -1,10 +1,10 @@
 // src/modules/dashboard/services/dashboard-paciente.service.ts
 
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
-import { ColaService } from '@/modules/cola/services/cola.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
+import { ColaService } from 'src/modules/cola/services/cola.service';
 import { DashboardPaciente } from '../dto/dashboard-paciente.dto';
-import { EstadoTurno } from '@/modules/turnos/entities/turno.entity';
+import { EstadoTurno } from 'src/modules/turnos/entities/turno.entity';
 
 @Injectable()
 export class DashboardPacienteService {
@@ -24,23 +24,44 @@ export class DashboardPacienteService {
     const turno = await this.prisma.turnos.findUnique({
       where: { id: turnoId },
       include: {
-        pacientes: {
-          include: {
-            usuarios: true,
-          },
-        },
-        nivel_triage: true,
-        medicos: {
-          include: {
-            usuarios: true,
-          },
-        },
+        pacientes: true,  
+        nivel_triage: true, 
       },
     });
 
     if (!turno) {
       throw new NotFoundException('Turno no encontrado');
     }
+
+    let pacienteUsuario = null;
+    if (turno.pacientes) {
+      pacienteUsuario = await this.prisma.usuarios.findUnique({
+        where: { id: turno.pacientes.usuario_id },
+      });
+    }
+
+    // Obtener médico asignado si existe
+    let medicoData = null;
+    let medicoUsuario = null;
+    if (turno.medico_id) {
+      medicoData = await this.prisma.medicos.findUnique({
+        where: { id: turno.medico_id },
+      });
+
+      if (medicoData) {
+        medicoUsuario = await this.prisma.usuarios.findUnique({
+          where: { id: medicoData.usuario_id },
+        });
+      }
+    }
+
+    let nivelTriageData = null;
+    if (turno.nivel_triage_id) {
+      nivelTriageData = await this.prisma.niveles_triage.findUnique({
+        where: { id: turno.nivel_triage_id },
+      });
+    }
+
     const tiempoEsperaMs = new Date().getTime() - turno.creado_en.getTime();
     const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
 
@@ -63,30 +84,33 @@ export class DashboardPacienteService {
 
       totalCola = colaCompleta.total;
     }
+
     const pacientesDelante = await this.contarPacientesDelantePorNivel(
       turno.hospital_id,
       turno.nivel_triage_id || 5,
       turnoId,
     );
+
     const tiempoEstimado = this.calcularTiempoEstimado(
       turno.nivel_triage_id || 5,
       posicionCola,
     );
-    const historial = await this.construirHistorial(turno);
+
+    const historial = await this.construirHistorial(turno, medicoData);
 
     return {
       turno: {
         numero_turno: turno.numero_turno,
         estado: turno.estado,
         nivel_triage: turno.nivel_triage_id || 0,
-        nivel_nombre: turno.nivel_triage?.nombre || 'Pendiente',
-        nivel_color: turno.nivel_triage?.color_codigo || '#999999',
+        nivel_nombre: nivelTriageData?.nombre || 'Pendiente',
+        nivel_color: nivelTriageData?.color_codigo || '#999999',
         tiempo_espera_minutos: tiempoEsperaMin,
         posicion_en_cola: posicionCola,
         total_en_cola: totalCola,
-        consultorio_asignado: turno.medicos?.consultorio,
-        medico_asignado: turno.medicos
-          ? `${turno.medicos.usuarios.nombre} ${turno.medicos.usuarios.apellido}`
+        consultorio_asignado: medicoData?.consultorio,
+        medico_asignado: medicoUsuario
+          ? `${medicoUsuario.nombre} ${medicoUsuario.apellido}`
           : undefined,
       },
       pacientes_delante: pacientesDelante,
@@ -133,9 +157,10 @@ export class DashboardPacienteService {
     turnoId: string,
   ) {
     const counts = { nivel_1: 0, nivel_2: 0, nivel_3: 0 };
+
     for (let nivel = 1; nivel < nivelActual; nivel++) {
       const cola = await this.colaService.obtenerColaPorNivel(hospitalId, nivel);
-      
+
       if (nivel === 1) counts.nivel_1 = cola.total;
       if (nivel === 2) counts.nivel_2 = cola.total;
       if (nivel === 3) counts.nivel_3 = cola.total;
@@ -148,7 +173,7 @@ export class DashboardPacienteService {
    * Calcula tiempo estimado de espera
    */
   private calcularTiempoEstimado(nivel: number, posicion: number): number {
-    const tiemposAtencion = {
+    const tiemposAtencion: Record<number, number> = {
       1: 25,
       2: 22,
       3: 18,
@@ -163,7 +188,7 @@ export class DashboardPacienteService {
   /**
    * Construye historial de pasos del turno
    */
-  private async construirHistorial(turno: any) {
+  private async construirHistorial(turno: any, medicoData: any) {
     const historial: Array<{ paso: string; timestamp: Date; completado: boolean }> = [];
 
     historial.push({
@@ -172,23 +197,24 @@ export class DashboardPacienteService {
       completado: true,
     });
 
-    const cuestionario = await this.prisma.cuestionario_triage.findFirst({
+    const evaluacionPreliminar = await this.prisma.evaluaciones_preliminares.findFirst({
       where: { turno_id: turno.id },
     });
 
-    if (cuestionario) {
+    if (evaluacionPreliminar) {
       historial.push({
-        paso: 'Cuestionario completado',
-        timestamp: cuestionario.creado_en,
+        paso: 'Evaluación preliminar completada',
+        timestamp: evaluacionPreliminar.creado_en,
         completado: true,
       });
     } else if (turno.estado === EstadoTurno.CUESTIONARIO_PENDIENTE) {
       historial.push({
-        paso: 'Cuestionario pendiente',
+        paso: 'Evaluación preliminar pendiente',
         timestamp: new Date(),
         completado: false,
       });
     }
+
     const registroTriage = await this.prisma.registros_triage.findFirst({
       where: { paciente_id: turno.paciente_id },
       orderBy: { creado_en: 'desc' },
@@ -207,6 +233,7 @@ export class DashboardPacienteService {
         completado: false,
       });
     }
+
     if (turno.nivel_triage_id) {
       const confirmacion = await this.prisma.confirmaciones_enfermero.findFirst({
         where: { registro_triage_id: turno.registro_triage_id },
@@ -231,7 +258,7 @@ export class DashboardPacienteService {
 
     if (turno.llamado_en) {
       historial.push({
-        paso: `Llamado a consultorio ${turno.medicos?.consultorio || ''}`,
+        paso: `Llamado a consultorio ${medicoData?.consultorio || ''}`,
         timestamp: turno.llamado_en,
         completado: true,
       });

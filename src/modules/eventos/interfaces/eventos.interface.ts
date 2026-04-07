@@ -4,22 +4,15 @@
  * Eventos que PUBLICA asclepio-triage
  */
 export enum TriageEventType {
-
   TURNO_CREADO = 'triage.turno.creado',
   TURNO_CANCELADO = 'triage.turno.cancelado',
-
   CUESTIONARIO_COMPLETADO = 'triage.cuestionario.completado',
-
   VITALES_REGISTRADOS = 'triage.vitales.registrados',
-
   TRIAGE_CONFIRMADO = 'triage.confirmado',
-
   PACIENTE_LLAMADO = 'triage.paciente.llamado',
   PACIENTE_ATENDIDO = 'triage.paciente.atendido',
-
   ALERTA_CRITICA_CREADA = 'triage.alerta.critica.creada',
   ALERTA_ESCALADA = 'triage.alerta.escalada',
-
   METRICAS_IA_ACTUALIZADAS = 'triage.metricas.ia.actualizadas',
 }
 
@@ -36,6 +29,23 @@ export enum CoreEventType {
 export enum FarmaciaEventType {
   ORDEN_CREADA = 'farmacia.orden.creada',
   ORDEN_ENTREGADA = 'farmacia.orden.entregada',
+}
+
+/**
+ * Opciones de configuración para consumo de mensajes
+ */
+export interface ConsumeOptions {
+  prefetchCount: number;
+  noAck: boolean;
+}
+
+/**
+ * Opciones de configuración para publicación de mensajes
+ */
+export interface PublishOptions {
+  persistent?: boolean;
+  expiration?: string;
+  priority?: number;
 }
 
 /**
@@ -67,6 +77,15 @@ export interface TurnoCreadoPayload {
   tipo_turno: string;
   estado: string;
   fecha: string;
+}
+
+export interface EvaluacionCompletadaPayload {
+  evaluacion_id: string;
+  turno_id: string;
+  nivel_prioridad: number;
+  hospital_id: number;
+  paciente_id: string;
+  sintomas: string[];
 }
 
 export interface CuestionarioCompletadoPayload {
@@ -156,6 +175,7 @@ export interface AlertaEscaladaPayload {
   jefe_guardia_id: string;
   razon_escalamiento: string;
   tiempo_sin_confirmar_min: number;
+  nivel_triage: number;
 }
 
 /**

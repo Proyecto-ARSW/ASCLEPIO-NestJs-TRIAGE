@@ -1,8 +1,7 @@
 // src/modules/alertas/services/alerta-triage.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
-import { AlertaTriage } from '../entities/alerta-triage.entity';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
 
 @Injectable()
 export class AlertaTriageService {
@@ -16,32 +15,26 @@ export class AlertaTriageService {
   async crearAlertaTiempoEspera(
     turnoId: string,
     hospitalId: number,
-    nivelTriage: number,
-    tiempoEspera: number,
-    tiempoMax: number,
-  ): Promise<AlertaTriage> {
+    tiempoExcedido: number,
+  ): Promise<any> {
     this.logger.warn(
-      `Creando alerta tiempo espera - Turno: ${turnoId} - Espera: ${tiempoEspera}min (Max: ${tiempoMax}min)`,
+      `Creando alerta tiempo espera - Turno: ${turnoId} - Tiempo excedido: ${tiempoExcedido}min`,
     );
 
     const alerta = await this.prisma.alertas_triage.create({
       data: {
         turno_id: turnoId,
         hospital_id: hospitalId,
-        nivel_triage: nivelTriage,
-        tiempo_espera_minutos: tiempoEspera,
-        tiempo_max_espera_minutos: tiempoMax,
-        mensaje: `Paciente lleva ${tiempoEspera} minutos en espera (Máximo: ${tiempoMax} min)`,
+        tipo_alerta: 'TIEMPO_ESPERA_EXCEDIDO',
+        nivel_severidad: 'ALTA',
+        mensaje: `Paciente lleva ${tiempoExcedido} minutos en espera excedida`,
+        tiempo_excedido_minutos: tiempoExcedido,
         resuelta: false,
       },
       include: {
-        turnos: {
+        turno: {  // ← CAMBIADO de "turnos" a "turno"
           include: {
-            pacientes: {
-              include: {
-                usuarios: true,
-              },
-            },
+            pacientes: true,
           },
         },
       },
@@ -49,49 +42,64 @@ export class AlertaTriageService {
 
     this.logger.log(`Alerta tiempo espera creada: ${alerta.id}`);
 
-    return alerta as AlertaTriage;
+    return alerta;
   }
 
   /**
    * Marca una alerta como resuelta
    */
-  async resolverAlerta(alertaId: string): Promise<AlertaTriage> {
+  async resolverAlerta(alertaId: string, resueltoBy?: string): Promise<any> {
     const alerta = await this.prisma.alertas_triage.update({
       where: { id: alertaId },
       data: {
         resuelta: true,
         resuelta_en: new Date(),
+        resuelta_por: resueltoBy || null,
       },
     });
 
-    return alerta as AlertaTriage;
+    return alerta;
   }
 
   /**
    * Obtiene alertas activas de tiempo de espera
    */
-  async obtenerAlertasActivas(hospitalId: number): Promise<AlertaTriage[]> {
+  async obtenerAlertasActivas(hospitalId: number): Promise<any[]> {
     const alertas = await this.prisma.alertas_triage.findMany({
       where: {
         hospital_id: hospitalId,
         resuelta: false,
       },
       include: {
-        turnos: {
+        turno: {  // ← CAMBIADO de "turnos" a "turno"
           include: {
-            pacientes: {
-              include: {
-                usuarios: true,
-              },
-            },
+            pacientes: true,
           },
         },
       },
       orderBy: {
-        tiempo_espera_minutos: 'desc',
+        tiempo_excedido_minutos: 'desc',  // ← CAMBIADO de "tiempo_espera_minutos"
       },
     });
 
-    return alertas as AlertaTriage[];
+    return alertas;
+  }
+
+  /**
+   * Resuelve todas las alertas de un turno
+   */
+  async resolverAlertasPorTurno(turnoId: string): Promise<void> {
+    await this.prisma.alertas_triage.updateMany({
+      where: {
+        turno_id: turnoId,
+        resuelta: false,
+      },
+      data: {
+        resuelta: true,
+        resuelta_en: new Date(),
+      },
+    });
+
+    this.logger.log(`Alertas resueltas para turno ${turnoId}`);
   }
 }

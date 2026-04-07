@@ -1,15 +1,15 @@
-// src/modules/cuestionario/cuestionario.module.ts
+// src/modules/evaluacion/evaluacion.module.ts
 
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { EvaluacionService } from './services/evaluacion.service';
 import { EvaluacionController } from './controllers/evaluacion.controller';
-import { TurnosModule } from '../turnos/turnos.module';
+import { PrismaModule } from 'src/modules/prisma/prisma.module';
 
 @Module({
   imports: [
+    PrismaModule,
     HttpModule,
-    TurnosModule,
   ],
   controllers: [EvaluacionController],
   providers: [EvaluacionService],
