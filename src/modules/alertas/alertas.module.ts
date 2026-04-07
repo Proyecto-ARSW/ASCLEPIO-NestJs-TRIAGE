@@ -7,9 +7,15 @@ import { EscalamientoService } from './services/escalamiento.service';
 import { AlertaResolver } from './resolvers/alerta.resolver';
 import { AlertaController } from './controllers/alerta.controller';
 import { ColaModule } from '../cola/cola.module';
+import { EventosModule } from '../eventos/eventos.module';
+import { WebsocketsModule } from '../websockets/websockets.module';
 
 @Module({
-  imports: [ColaModule],
+  imports: [
+    ColaModule,
+    EventosModule,     
+    WebsocketsModule,  
+  ],
   controllers: [AlertaController],
   providers: [
     AlertaCriticaService,
