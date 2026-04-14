@@ -239,6 +239,26 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+    async psubscribe(pattern: string, callback: (channel: string, message: string) => void): Promise<void> {
+    if (!this.subscriber) {
+      this.logger.warn(`Redis subscriber no disponible, psubscribe a ${pattern} ignorado`);
+      return;
+    }
+
+    try {
+      await this.subscriber.psubscribe(pattern);
+      this.subscriber.on('pmessage', (pat: string, ch: string, msg: string) => {
+        if (pat === pattern) {
+          callback(ch, msg);
+        }
+      });
+      this.logger.log(`Suscrito a patrón Redis: ${pattern}`);
+    } catch (error: any) {
+      this.logger.error(`Error suscribiéndose a patrón ${pattern}: ${error?.message || error}`);
+    }
+  }
+
+
   pipeline() {
     if (!this.client) {
       throw new Error('Redis client no disponible');

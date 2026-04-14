@@ -29,7 +29,7 @@ export class EscalamientoService {
 
     const alerta = await this.alertaCriticaService.obtenerPorId(dto.alerta_id);
 
-    if (alerta.alerta_escalada) {
+    if (alerta.escalada) { 
       this.logger.warn(`Alerta ${dto.alerta_id} ya fue escalada`);
       return alerta;
     }
@@ -44,7 +44,7 @@ export class EscalamientoService {
     const alertaEscalada = await this.prisma.alertas_criticas.update({
       where: { id: dto.alerta_id },
       data: {
-        alerta_escalada: true,
+        escalada: true, 
         tipo_alerta: 'TRIAGE_ESCALADO' as tipo_alerta_critica,
       },
     });
@@ -59,7 +59,6 @@ export class EscalamientoService {
           ),
         )
       : 0;
-
 
     await this.eventPublisher.publishAlertaEscalada({
       alerta_id: alertaEscalada.id,
