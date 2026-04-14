@@ -46,7 +46,6 @@ export class TasksService {
     this.logger.debug('Cron: Verificando tiempos de espera...');
 
     try {
-      // Obtener todos los hospitales activos
       const hospitales = await this.prisma.hospitales.findMany({
         where: { activo: true },
         select: { id: true, nombre: true },
@@ -93,12 +92,8 @@ export class TasksService {
         (Date.now() - turno.actualizado_en.getTime()) / 60000,
       );
       const tiempoMaximo = turno.nivel_triage.tiempo_max_espera_min;
-
-      // Si el tiempo de espera excede el máximo para su nivel
       if (tiempoEsperaMin > tiempoMaximo) {
         const tiempoExcedido = tiempoEsperaMin - tiempoMaximo;
-
-        // Verificar si ya existe alerta activa para este turno
         const alertaExistente = await this.prisma.alertas_triage.findFirst({
           where: {
             turno_id: turno.id,
@@ -108,15 +103,11 @@ export class TasksService {
         });
 
         if (alertaExistente) continue;
-
-        // Crear alerta de tiempo excedido
         await this.alertaTriageService.crearAlertaTiempoEspera(
           turno.id,
           hospitalId,
           tiempoExcedido,
         );
-
-        // Obtener nombre del paciente para notificación
         let pacienteNombre = 'Desconocido';
         if (turno.pacientes) {
           const usuario = await this.prisma.usuarios.findUnique({
@@ -126,8 +117,6 @@ export class TasksService {
             pacienteNombre = `${usuario.nombre} ${usuario.apellido}`;
           }
         }
-
-        // WebSocket: notificar a dashboards
         this.triageGateway.emitToDashboardMedicos(
           hospitalId,
           'alerta:tiempo-excedido',

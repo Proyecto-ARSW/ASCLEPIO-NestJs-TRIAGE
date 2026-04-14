@@ -170,21 +170,42 @@ export class EscalamientoService {
   }
 
   /**
-   * Obtiene el jefe de guardia de un hospital
-   */
+  * Obtiene el jefe de guardia de un hospital
+  */
   private async obtenerJefeGuardia(
     hospitalId: number,
   ): Promise<{ id: string } | null> {
+    const medico = await this.prisma.medicos.findFirst({
+      where: {
+        activo: true,
+        hospital_id: hospitalId,
+        usuarios: {
+          rol: 'JEFE_GUARDIA',
+          activo: true,
+        },
+      },
+      select: {
+        usuario_id: true,
+      },
+    });
+
+    if (medico) {
+      return { id: medico.usuario_id };
+    }
+
+    this.logger.warn(
+      `No se encontró jefe de guardia específico para hospital ${hospitalId}, buscando fallback`,
+    );
+
     const jefeGuardia = await this.prisma.usuarios.findFirst({
       where: {
         rol: 'JEFE_GUARDIA',
         activo: true,
       },
-      select: {
-        id: true,
-      },
+      select: { id: true },
     });
 
     return jefeGuardia;
   }
+
 }
