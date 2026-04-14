@@ -8,6 +8,7 @@ import { VitalesResponseDto } from '../dto/vitales-response.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TriageEventPublisher } from '../../eventos/publishers/triage-event.publisher';
 import { TriageGateway } from '../../websockets/gateways/triage.gateway';
+import { RedisService } from 'src/modules/cola/services/redis.service';
 
 @Injectable()
 export class VitalesService {
@@ -16,9 +17,9 @@ export class VitalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly classifierGateway: ClassifierGatewayService,
-  
     private readonly eventPublisher: TriageEventPublisher,
     private readonly triageGateway: TriageGateway,
+    private readonly redis: RedisService,
   ) {}
 
   /**
