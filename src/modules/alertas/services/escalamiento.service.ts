@@ -29,10 +29,11 @@ export class EscalamientoService {
 
     const alerta = await this.alertaCriticaService.obtenerPorId(dto.alerta_id);
 
-    if (alerta.escalada) { 
-      this.logger.warn(`Alerta ${dto.alerta_id} ya fue escalada`);
-      return alerta;
-    }
+        if (alerta.escalada) {
+          this.logger.warn(`Alerta ${dto.alerta_id} ya fue escalada`);
+          return alerta;
+        }
+
 
     const turno = await this.prisma.turnos.findUnique({
       where: { id: alerta.turno_id },
@@ -44,10 +45,12 @@ export class EscalamientoService {
     const alertaEscalada = await this.prisma.alertas_criticas.update({
       where: { id: dto.alerta_id },
       data: {
-        escalada: true, 
+        escalada: true,
+        escalada_en: new Date(),
         tipo_alerta: 'TRIAGE_ESCALADO' as tipo_alerta_critica,
       },
     });
+
 
     this.logger.log(`Alerta escalada a jefe de guardia`);
 
@@ -142,10 +145,14 @@ export class EscalamientoService {
           continue;
         }
 
+        const tiempoEsperaMin = Math.floor(
+          (Date.now() - new Date(alerta.creado_en).getTime()) / 60000,
+        );
+
         await this.escalarAlerta({
           alerta_id: alerta.id,
           jefe_guardia_id: jefeGuardia.id,
-          razon_escalamiento: `Escalamiento automático: Alerta no confirmada después de ${alerta.tiempo_espera_min} minutos`,
+          razon_escalamiento: `Escalamiento automático: Alerta no confirmada después de ${tiempoEsperaMin} minutos`,
         });
 
         escaladas++;
@@ -155,6 +162,7 @@ export class EscalamientoService {
         );
       }
     }
+
 
     this.logger.log(`Proceso completado - ${escaladas} alerta(s) escalada(s)`);
 
