@@ -335,13 +335,13 @@ export class TriageGateway
     this.logger.debug(`Notificación emitida: ${payload.titulo}`);
   }
 
-  /**
+    /**
    * Suscribe el gateway a eventos de Redis Pub/Sub
    */
   private async suscribirseAEventosRedis() {
     this.logger.log('Suscribiéndose a eventos de Redis Pub/Sub...');
 
-    await this.redis.subscribe('hospital:*:cola:actualizada', (mensaje) => {
+    await this.redis.psubscribe('hospital:*:cola:actualizada', (channel, mensaje) => {
       try {
         const data = JSON.parse(mensaje);
         this.emitColaActualizada({
@@ -354,7 +354,7 @@ export class TriageGateway
       }
     });
 
-    await this.redis.subscribe('hospital:*:alerta:critica', (mensaje) => {
+    await this.redis.psubscribe('hospital:*:alerta:critica', (channel, mensaje) => {
       try {
         const data = JSON.parse(mensaje);
         this.emitAlertaCritica(data, data.hospital_id);
@@ -365,6 +365,7 @@ export class TriageGateway
 
     this.logger.log('Suscripciones a Redis Pub/Sub activas');
   }
+
 
   private extractToken(client: AuthenticatedSocket): string | undefined {
     const authHeader = client.handshake?.headers?.authorization;
