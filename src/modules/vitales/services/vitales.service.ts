@@ -58,17 +58,16 @@ export class VitalesService {
     // 3. Calcular campos derivados
     const pam = this.calcularPresionArterialMedia(dto.presion_sistolica, dto.presion_diastolica);
     const shockIndex = this.calcularShockIndex(dto.frecuencia_cardiaca, dto.presion_sistolica);
-    const tieneAlertas = this.detectarAlertasVitales(dto, pam, shockIndex);
+    const alertasVitales = this.detectarAlertasVitales(dto, pam, shockIndex);
+    const tieneAlertas = alertasVitales.length > 0;
 
     // 4. Construir payload para Random Forest
     const payloadRF = {
-      // Datos de la evaluación preliminar
       sintomas: evaluacion.sintomas,
       embarazo: evaluacion.embarazo,
       antecedentes: evaluacion.antecedentes,
       nivel_preliminar: evaluacion.nivel_prioridad,
 
-      // Signos vitales
       presion_sistolica: dto.presion_sistolica,
       presion_diastolica: dto.presion_diastolica,
       frecuencia_cardiaca: dto.frecuencia_cardiaca,
@@ -76,7 +75,6 @@ export class VitalesService {
       temperatura: dto.temperatura,
       saturacion_oxigeno: dto.saturacion_oxigeno,
 
-      // Campos calculados
       presion_arterial_media: pam,
       shock_index: shockIndex,
     };
@@ -87,8 +85,6 @@ export class VitalesService {
       clasificacion = await this.classifierGateway.clasificar(payloadRF);
     } catch (error: any) {
       this.logger.error(`Error al llamar al clasificador: ${error?.message || error}`);
-
-      // Fallback: usar nivel preliminar + detección simple de alertas
       clasificacion = this.fallbackClasificacion(evaluacion.nivel_prioridad, tieneAlertas);
     }
 
@@ -100,7 +96,6 @@ export class VitalesService {
         enfermero_id: dto.enfermero_id,
         evaluacion_preliminar_id: evaluacion.id,
 
-        // Signos vitales
         presion_sistolica: dto.presion_sistolica,
         presion_diastolica: dto.presion_diastolica,
         frecuencia_cardiaca: dto.frecuencia_cardiaca,
@@ -110,17 +105,14 @@ export class VitalesService {
         peso_kg: dto.peso_kg ? new Decimal(dto.peso_kg.toFixed(2)) : null,
         altura_cm: dto.altura_cm || null,
 
-        // Campos calculados
         presion_arterial_media: new Decimal(pam.toFixed(2)),
         shock_index: new Decimal(shockIndex.toFixed(2)),
         tiene_alertas_vitales: tieneAlertas,
 
-        // Clasificación de IA
         nivel_sugerido_ia: clasificacion.nivel_sugerido,
         confianza_ia: new Decimal(clasificacion.confianza.toFixed(4)),
         comentarios_ia: clasificacion.comentarios || null,
 
-        // Probabilidades
         probabilidad_nivel_1: clasificacion.probabilidades?.nivel_1
           ? new Decimal(clasificacion.probabilidades.nivel_1.toFixed(4))
           : null,
@@ -137,13 +129,11 @@ export class VitalesService {
           ? new Decimal(clasificacion.probabilidades.nivel_5.toFixed(4))
           : null,
 
-        // Features importantes (ML interpretability)
         feature_mas_importante: clasificacion.feature_mas_importante || null,
         valor_feature_importante: clasificacion.valor_feature_importante
           ? new Decimal(clasificacion.valor_feature_importante.toFixed(4))
           : null,
 
-        // Info adicional
         motivo_consulta: dto.motivo_consulta,
         sintomas_observados: dto.sintomas_observados || null,
         observaciones: dto.observaciones || null,
@@ -165,6 +155,16 @@ export class VitalesService {
       `Vitales registrados - ID: ${registro.id}, Nivel sugerido: ${clasificacion.nivel_sugerido}`,
     );
 
+    if (tieneAlertas) {
+      await this.crearAlertaVitalesCriticos(
+        dto.turno_id,
+        dto.hospital_id,
+        dto.paciente_id,
+        clasificacion.nivel_sugerido,
+        alertasVitales,
+        turno.numero_turno,
+      );
+    }
     
     await this.eventPublisher.publishVitalesRegistrados({
       turno_id: dto.turno_id,
@@ -183,7 +183,7 @@ export class VitalesService {
         temperatura: dto.temperatura,
         saturacion_oxigeno: dto.saturacion_oxigeno,
       },
-      alertas_vitales: [],
+      alertas_vitales: alertasVitales,
     });
   
 
@@ -194,10 +194,102 @@ export class VitalesService {
       nivel_sugerido: clasificacion.nivel_sugerido,
       confianza: clasificacion.confianza,
       tiene_alertas: tieneAlertas,
+      alertas_vitales: alertasVitales,
     });
 
 
     return registro as any as VitalesResponseDto;
+  }
+
+    /**
+   * Crea alerta crítica cuando se detectan signos vitales fuera de rango
+   */
+  private async crearAlertaVitalesCriticos(
+    turnoId: string,
+    hospitalId: number,
+    pacienteId: string,
+    nivelSugerido: number,
+    alertas: string[],
+    numeroTurno: number,
+  ): Promise<void> {
+    try {
+      const alertaExistente = await this.prisma.alertas_criticas.findFirst({
+        where: {
+          turno_id: turnoId,
+          activa: true,
+        },
+      });
+
+      if (alertaExistente) {
+        this.logger.debug(`Ya existe alerta activa para turno ${turnoId}`);
+        return;
+      }
+
+      const alerta = await this.prisma.alertas_criticas.create({
+        data: {
+          turno_id: turnoId,
+          hospital_id: hospitalId,
+          nivel_triage: nivelSugerido,
+          tipo_alerta: 'TRIAGE_CRITICO_PRELIMINAR',
+          activa: true,
+        },
+      });
+
+      this.logger.warn(
+        `Alerta vitales críticos creada - Turno: ${turnoId}, Alertas: ${alertas.join(', ')}`,
+      );
+
+      const paciente = await this.prisma.pacientes.findUnique({
+        where: { id: pacienteId },
+      });
+      const usuario = paciente
+        ? await this.prisma.usuarios.findUnique({ where: { id: paciente.usuario_id } })
+        : null;
+
+      this.triageGateway.emitAlertaCritica(
+        {
+          alerta_id: alerta.id,
+          turno_id: turnoId,
+          numero_turno: numeroTurno,
+          paciente_nombre: usuario?.nombre || 'Desconocido',
+          nivel_triage: nivelSugerido,
+          tipo_alerta: 'TRIAGE_CRITICO_PRELIMINAR',
+          timestamp: new Date().toISOString(),
+        },
+        hospitalId,
+      );
+
+      const redisService = (this.triageGateway as any).redis as import('src/modules/cola/services/redis.service').RedisService;
+      if (redisService) {
+        await redisService.publish(
+          `hospital:${hospitalId}:alerta:critica`,
+          JSON.stringify({
+            alerta_id: alerta.id,
+            turno_id: turnoId,
+            numero_turno: numeroTurno,
+            paciente_nombre: usuario?.nombre || 'Desconocido',
+            nivel_triage: nivelSugerido,
+            tipo_alerta: 'TRIAGE_CRITICO_PRELIMINAR',
+            alertas_vitales: alertas,
+            hospital_id: hospitalId,
+            timestamp: new Date().toISOString(),
+          }),
+        );
+      }
+
+      await this.eventPublisher.publishAlertaCritica({
+        alerta_id: alerta.id,
+        turno_id: turnoId,
+        hospital_id: hospitalId,
+        paciente_id: pacienteId,
+        nivel_triage: nivelSugerido,
+        tipo_alerta: 'TRIAGE_CRITICO_PRELIMINAR',
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `Error creando alerta de vitales críticos: ${error?.message || error}`,
+      );
+    }
   }
 
   /**
@@ -216,52 +308,68 @@ export class VitalesService {
     return fc / sistolica;
   }
 
-  /**
+    /**
    * Detectar alertas vitales críticas
+   * Retorna lista de alertas detectadas (vacía si no hay)
    */
   private detectarAlertasVitales(
     vitales: RegistrarVitalesDto,
     pam: number,
     shockIndex: number,
-  ): boolean {
+  ): string[] {
     const alertas: string[] = [];
 
-    // Hipotensión (PAM < 65 mmHg)
     if (pam < 65) {
       alertas.push('Hipotensión (PAM < 65 mmHg)');
     }
 
-    // Taquicardia (FC > 100 lpm)
-    if (vitales.frecuencia_cardiaca > 100) {
-      alertas.push('Taquicardia (FC > 100 lpm)');
+    if (vitales.frecuencia_cardiaca > 120) {
+      alertas.push('Taquicardia severa (FC > 120 bpm)');
     }
 
-    // Shock Index elevado (SI > 1.0)
+    if (vitales.frecuencia_cardiaca < 50) {
+      alertas.push('Bradicardia (FC < 50 bpm)');
+    }
+
     if (shockIndex > 1.0) {
       alertas.push('Shock Index elevado (SI > 1.0)');
     }
 
-    // Hipoxemia (SpO2 < 92%)
-    if (vitales.saturacion_oxigeno < 92) {
-      alertas.push('Hipoxemia (SpO2 < 92%)');
+    if (vitales.saturacion_oxigeno < 90) {
+      alertas.push('Hipoxemia severa (SpO2 < 90%)');
     }
 
-    // Taquipnea (FR > 24 rpm)
     if (vitales.frecuencia_respiratoria > 24) {
       alertas.push('Taquipnea (FR > 24 rpm)');
     }
 
-    // Fiebre alta (T > 39°C)
+    if (vitales.frecuencia_respiratoria < 12) {
+      alertas.push('Bradipnea (FR < 12 rpm)');
+    }
+
     if (vitales.temperatura > 39) {
       alertas.push('Fiebre alta (T > 39°C)');
+    }
+
+    if (vitales.temperatura < 35) {
+      alertas.push('Hipotermia (T < 35°C)');
+    }
+
+    if (vitales.presion_sistolica > 180) {
+      alertas.push('Crisis hipertensiva (PAS > 180 mmHg)');
+    }
+
+    if (vitales.presion_sistolica < 90) {
+      alertas.push('Hipotensión sistólica (PAS < 90 mmHg)');
     }
 
     if (alertas.length > 0) {
       this.logger.warn(`Alertas vitales detectadas: ${alertas.join(', ')}`);
     }
 
-    return alertas.length > 0;
+    return alertas;
   }
+
 
   /**
    * Fallback si el clasificador Random Forest falla
