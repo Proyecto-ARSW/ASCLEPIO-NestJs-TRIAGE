@@ -2,14 +2,10 @@
 
 import { Module, Global } from '@nestjs/common';
 import { TriageEventPublisher } from './publishers/triage-event.publisher';
-import { CoreEventConsumer } from './consumers/core-event.consumer';
 
 @Global()
 @Module({
-  providers: [
-    TriageEventPublisher,
-    CoreEventConsumer,
-  ],
+  providers: [TriageEventPublisher],
   exports: [TriageEventPublisher],
 })
 export class EventosModule {}

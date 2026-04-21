@@ -17,6 +17,8 @@ import { TipoTurno, EstadoTurno, Turno } from '../entities/turno.entity';
 import { ColaService } from '@/modules/cola/services/cola.service';
 import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
+import { CoreClientService } from '@/modules/core-client/core-client.service';
+import { CoreNotifierService } from '@/modules/core-client/core-notifier.service';
 
 @Injectable()
 export class TurnoService {
@@ -29,12 +31,16 @@ export class TurnoService {
     @Inject(TriageGateway)
     private readonly triageGateway: TriageGateway,
     private readonly eventPublisher: TriageEventPublisher,
+    private readonly coreClient: CoreClientService,
+    private readonly coreNotifier: CoreNotifierService,
   ) {}
 
   /**
    * Crea un nuevo turno de urgencia
    */
   async crearTurnoUrgencia(dto: CrearTurnoUrgenciaDto): Promise<Turno> {
+    await this.coreClient.sincronizarPaciente(dto.paciente_id);
+
     const paciente = await this.prisma.pacientes.findUnique({
       where: { id: dto.paciente_id },
     });
@@ -71,7 +77,6 @@ export class TurnoService {
       },
     });
 
-    // Obtener usuario del paciente
     const usuario = await this.prisma.usuarios.findUnique({
       where: { id: paciente.usuario_id },
     });
@@ -99,17 +104,24 @@ export class TurnoService {
       fecha: new Date().toISOString(),
     });
 
+    await this.coreNotifier.notificarTurnoCreado({
+      turno_id: turno.id,
+      numero_turno: numeroTurno,
+      hospital_id: dto.hospital_id,
+      paciente_id: dto.paciente_id,
+      tipo_turno: TipoTurno.URGENCIA,
+      estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+      fecha: new Date().toISOString(),
+    });
+
     return turno as unknown as Turno;
   }
 
-  /**
-   * Obtiene un turno por ID
-   */
   async obtenerPorId(id: string): Promise<Turno> {
     const turno = await this.prisma.turnos.findUnique({
       where: { id },
       include: {
-        pacientes: true, 
+        pacientes: true,
         hospitales: true,
         nivel_triage: true,
       },
@@ -122,9 +134,6 @@ export class TurnoService {
     return turno as unknown as Turno;
   }
 
-  /**
-   * Obtiene todos los turnos de un hospital
-   */
   async obtenerPorHospital(
     hospitalId: number,
     fecha?: Date,
@@ -143,7 +152,7 @@ export class TurnoService {
         ...(estado && { estado }),
       },
       include: {
-        pacientes: true,  
+        pacientes: true,
         nivel_triage: true,
         registro_triage: true,
       },
@@ -153,9 +162,6 @@ export class TurnoService {
     return turnos as unknown as Turno[];
   }
 
-  /**
-   * Actualiza el estado de un turno
-   */
   async actualizarEstado(id: string, dto: ActualizarEstadoTurnoDto): Promise<Turno> {
     const turno = await this.obtenerPorId(id);
 
@@ -165,7 +171,7 @@ export class TurnoService {
         estado: dto.estado,
       },
       include: {
-        pacientes: true,  
+        pacientes: true,
         nivel_triage: true,
       },
     });
@@ -175,9 +181,6 @@ export class TurnoService {
     return turnoActualizado as unknown as Turno;
   }
 
-  /**
-   * Llamar paciente para atención (médico)
-   */
   async llamarPaciente(id: string, dto: LlamarPacienteDto): Promise<Turno> {
     const turno = await this.obtenerPorId(id);
 
@@ -186,6 +189,8 @@ export class TurnoService {
         `El turno debe estar en estado EN_ESPERA. Estado actual: ${turno.estado}`,
       );
     }
+
+    await this.coreClient.sincronizarMedico(dto.medico_id);
 
     if (turno.nivel_triage_id) {
       await this.colaService.removerDeCola(id, turno.hospital_id, turno.nivel_triage_id);
@@ -200,14 +205,13 @@ export class TurnoService {
         llamado_en: new Date(),
       },
       include: {
-        pacientes: true,  
+        pacientes: true,
         nivel_triage: true,
       },
     });
 
     this.logger.log(`Paciente llamado: Turno ${turno.numero_turno} - Consultorio: ${dto.consultorio}`);
 
-    // Obtener médico y su usuario
     const medico = await this.prisma.medicos.findUnique({
       where: { id: dto.medico_id },
     });
@@ -216,7 +220,6 @@ export class TurnoService {
       ? await this.prisma.usuarios.findUnique({ where: { id: medico.usuario_id } })
       : null;
 
-    // Obtener paciente y su usuario
     const paciente = await this.prisma.pacientes.findUnique({
       where: { id: turno.paciente_id },
     });
@@ -258,9 +261,6 @@ export class TurnoService {
     return turnoActualizado as unknown as Turno;
   }
 
-  /**
-   * Finalizar atención de turno
-   */
   async finalizarTurno(id: string, dto: FinalizarTurnoDto): Promise<Turno> {
     const turno = await this.obtenerPorId(id);
     if (turno.estado !== EstadoTurno.EN_CONSULTA) {
@@ -283,7 +283,21 @@ export class TurnoService {
         finalizado_en: new Date(),
       },
     });
+
     await this.eventPublisher.publishPacienteAtendido({
+      turno_id: turno.id,
+      numero_turno: turno.numero_turno,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      medico_id: dto.medico_id,
+      nivel_triage: turno.nivel_triage_id || 0,
+      tiempo_espera_minutos: tiempoEsperaMin,
+      tiempo_atencion_minutos: tiempoAtencionMin,
+      diagnostico: dto.diagnostico,
+      tratamiento: dto.tratamiento,
+      observaciones: dto.observaciones,
+    });
+    await this.coreNotifier.notificarPacienteAtendido({
       turno_id: turno.id,
       numero_turno: turno.numero_turno,
       hospital_id: turno.hospital_id,
@@ -302,9 +316,6 @@ export class TurnoService {
     return turnoActualizado as unknown as Turno;
   }
 
-  /**
-   * Cancelar turno
-   */
   async cancelarTurno(id: string): Promise<Turno> {
     const turno = await this.obtenerPorId(id);
 
@@ -315,9 +326,16 @@ export class TurnoService {
       },
     });
 
-   await this.eventPublisher.publishTurnoCancelado({
+    await this.eventPublisher.publishTurnoCancelado({
       turno_id: turno.id,
       hospital_id: turno.hospital_id,
+      razon: 'Cancelado por usuario',
+    });
+    await this.coreNotifier.notificarTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      numero_turno: turno.numero_turno,
       razon: 'Cancelado por usuario',
     });
 

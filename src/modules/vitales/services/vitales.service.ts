@@ -377,15 +377,13 @@ export class VitalesService {
    */
   private fallbackClasificacion(nivel_preliminar: number, tiene_alertas: boolean) {
     let nivel_sugerido = nivel_preliminar;
-
-    // Si tiene alertas vitales críticas, escalar un nivel
     if (tiene_alertas && nivel_preliminar > 1) {
       nivel_sugerido = nivel_preliminar - 1;
     }
 
     return {
       nivel_sugerido,
-      confianza: 0.5, // Baja confianza porque es fallback
+      confianza: 0.5,
       comentarios:
         'Clasificación por fallback (Random Forest no disponible). Nivel basado en evaluación preliminar y alertas vitales.',
       probabilidades: null,

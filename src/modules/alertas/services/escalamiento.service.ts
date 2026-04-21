@@ -152,7 +152,7 @@ export class EscalamientoService {
         await this.escalarAlerta({
           alerta_id: alerta.id,
           jefe_guardia_id: jefeGuardia.id,
-          razon_escalamiento: `Escalamiento automático: Alerta no confirmada después de ${tiempoEsperaMin} minutos`,
+          razon_escalamiento: `Escalamiento automático: Alerta no confirmada después de ${Math.floor((Date.now() - new Date(alerta.creado_en).getTime()) / 60000)} minutos`,
         });
 
         escaladas++;
@@ -178,34 +178,35 @@ export class EscalamientoService {
     const medico = await this.prisma.medicos.findFirst({
       where: {
         activo: true,
-        hospital_id: hospitalId,
-        usuarios: {
-          rol: 'JEFE_GUARDIA',
-          activo: true,
+        turnos: {
+          some: {
+            hospital_id: hospitalId,
+          },
         },
       },
-      select: {
-        usuario_id: true,
+      include: {
+        turnos: { select: { hospital_id: true }, take: 1 },
       },
     });
 
     if (medico) {
-      return { id: medico.usuario_id };
+      const usuario = await this.prisma.usuarios.findFirst({
+        where: {
+          id: medico.usuario_id,
+          rol: 'JEFE_GUARDIA',
+          activo: true,
+        },
+        select: { id: true },
+      });
+      if (usuario) return usuario;
     }
 
-    this.logger.warn(
-      `No se encontró jefe de guardia específico para hospital ${hospitalId}, buscando fallback`,
-    );
-
-    const jefeGuardia = await this.prisma.usuarios.findFirst({
+    return await this.prisma.usuarios.findFirst({
       where: {
         rol: 'JEFE_GUARDIA',
         activo: true,
       },
       select: { id: true },
     });
-
-    return jefeGuardia;
   }
-
 }

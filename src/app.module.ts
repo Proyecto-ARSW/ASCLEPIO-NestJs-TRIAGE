@@ -29,6 +29,7 @@ import { ConfirmacionModule } from './modules/confirmacion/confirmacion.module';
 import { AlertasModule } from './modules/alertas/alertas.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { CoreClientModule } from './modules/core-client/core-client.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     AlertasModule,      // Alertas críticas + GraphQL Subscriptions
     TasksModule,        // Cron jobs (escalamiento automático)
     DashboardModule,    // 6 dashboards especializados
+    CoreClientModule,     // Comunicación con Core (HTTP)
   ],
   controllers: [],
   providers: [],
