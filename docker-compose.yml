@@ -1,48 +1,76 @@
-version: '3.8'
-
 services:
+  # ============================================
+  # PostgreSQL
+  # ============================================
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: asclepio-triage-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: asclepio
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     ports:
       - '5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d asclepio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - asclepio-network
 
+  # ============================================
+  # Redis
+  # ============================================
   redis:
     image: redis:7-alpine
     container_name: asclepio-triage-redis
     restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
     ports:
       - '6379:6379'
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - asclepio-network
 
+  # ============================================
+  # RabbitMQ
+  # ============================================
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3.12-management-alpine
     container_name: asclepio-triage-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
     ports:
-      - '5672:5672'   
-      - '15672:15672' 
+      - '5672:5672'   # AMQP
+      - '15672:15672' # Management UI
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     networks:
       - asclepio-network
 
+  # ============================================
+  # Prometheus
+  # ============================================
   prometheus:
     image: prom/prometheus:latest
     container_name: asclepio-triage-prometheus
@@ -58,6 +86,10 @@ services:
       - '--web.enable-lifecycle'
     networks:
       - asclepio-network
+
+  # ============================================
+  # Grafana
+  # ============================================
   grafana:
     image: grafana/grafana:latest
     container_name: asclepio-triage-grafana
@@ -78,42 +110,84 @@ services:
     networks:
       - asclepio-network
 
-  triage-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: asclepio-triage-service
-    restart: unless-stopped
-    ports:
-      - '3001:3001'
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/asclepio?schema=triage
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 1
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      OLLAMA_PRELIM_URL: http://ptia-ollama-prelim:3002
-      TRIAGE_CLASSIFIER_URL: http://ptia-triage-classifier:3003
-      CORE_API_URL: http://asclepio-core:3000
-      PORT: 3001
-      NODE_ENV: production
-      JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      CORS_ORIGIN: http://localhost:5173
-    depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-    networks:
-      - asclepio-network
-    volumes:
-      - ./logs:/app/logs
+  # ============================================
+  # Triage Service (Backend NestJS) - COMENTADO PARA DESARROLLO
+  # ============================================
+  # NOTA: Para desarrollo, es mejor correr el backend localmente con:
+  # npm run start:dev
+  # Esto permite hot-reload y debugging más fácil
+  #
+  # Para producción, descomenta este bloque y ejecuta:
+  # docker-compose up -d --build
+  #
+  # triage-service:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: asclepio-triage-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - '3001:3001'
+  #   environment:
+  #     # Base de datos
+  #     DATABASE_URL: postgresql://postgres:postgres@postgres:5432/asclepio?schema=triage
+  #     
+  #     # Redis
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     REDIS_DB: 1
+  #     
+  #     # RabbitMQ
+  #     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+  #     RABBITMQ_EXCHANGE: asclepio_exchange
+  #     RABBITMQ_QUEUE_TRIAGE: triage_events
+  #     
+  #     # Microservicios externos
+  #     OLLAMA_SERVICE_URL: http://ptia-ollama-prelim:3002
+  #     CLASSIFIER_SERVICE_URL: http://ptia-triage-classifier:3003
+  #     CORE_API_URL: http://asclepio-core:3000
+  #     
+  #     # API Config
+  #     PORT: 3001
+  #     API_PREFIX: api/triage
+  #     USE_API_GATEWAY: false
+  #     
+  #     # App Config
+  #     NODE_ENV: production
+  #     LOG_LEVEL: info
+  #     
+  #     # JWT
+  #     JWT_SECRET: your-super-secret-jwt-key-change-in-production
+  #     JWT_REFRESH_SECRET: your-super-secret-refresh-key-change-in-production
+  #     JWT_EXPIRES_IN: 1h
+  #     JWT_REFRESH_EXPIRES_IN: 7d
+  #     
+  #     # CORS
+  #     CORS_ORIGIN: http://localhost:5173,http://localhost:3000
+  #     FRONTEND_URL: http://localhost:5173
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   networks:
+  #     - asclepio-network
+  #   volumes:
+  #     - ./logs:/app/logs
 
 volumes:
   postgres-data:
+    driver: local
   redis-data:
+    driver: local
   rabbitmq-data:
+    driver: local
   prometheus-data:
+    driver: local
   grafana-data:
+    driver: local
 
 networks:
   asclepio-network:
