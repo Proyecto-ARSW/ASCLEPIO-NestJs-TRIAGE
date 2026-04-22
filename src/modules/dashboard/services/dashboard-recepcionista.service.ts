@@ -165,9 +165,8 @@ export class DashboardRecepcionistaService {
     const enEspera = turnosHoy.filter(
       (t) =>
         t.estado === EstadoTurno.EN_ESPERA ||
-        t.estado === EstadoTurno.CUESTIONARIO_PENDIENTE ||
-        t.estado === EstadoTurno.ESPERANDO_VITALES ||
-        t.estado === EstadoTurno.TRIAGE_COMPLETO,
+        t.estado === EstadoTurno.CLASIFICACION_PENDIENTE ||
+        t.estado === EstadoTurno.ESPERANDO_CONFIRMACION,
     ).length;
     const atendidos = turnosHoy.filter((t) => t.estado === EstadoTurno.ATENDIDO).length;
     const cancelados = turnosHoy.filter((t) => t.estado === EstadoTurno.CANCELADO).length;

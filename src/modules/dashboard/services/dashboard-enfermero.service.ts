@@ -43,7 +43,6 @@ export class DashboardEnfermeroService {
     const esperandoVitales = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
-        estado: EstadoTurno.ESPERANDO_VITALES,
         fecha: { gte: hoy },
       },
       include: {
@@ -57,7 +56,7 @@ export class DashboardEnfermeroService {
     const esperandoConfirmacion = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
-        estado: EstadoTurno.TRIAGE_COMPLETO,
+        estado: EstadoTurno.ESPERANDO_CONFIRMACION,
         fecha: { gte: hoy },
       },
       include: {

@@ -30,7 +30,7 @@ export class TriageEventPublisher extends BasePublisher {
    * Publica evento: Evaluación preliminar completada (Ollama)
    */
   async publishEvaluacionCompletada(payload: EvaluacionCompletadaPayload): Promise<void> {
-    await this.publish(TriageEventType.CUESTIONARIO_COMPLETADO, payload);
+    await this.publish(TriageEventType.CLASIFICACION_COMPLETADA, payload);
     this.logger.log(
       `Evento publicado: EVALUACION_COMPLETADA - Turno: ${payload.turno_id}, Nivel: ${payload.nivel_prioridad}`,
     );

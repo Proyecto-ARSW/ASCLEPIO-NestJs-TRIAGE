@@ -6,7 +6,7 @@
 export enum TriageEventType {
   TURNO_CREADO = 'triage.turno.creado',
   TURNO_CANCELADO = 'triage.turno.cancelado',
-  CUESTIONARIO_COMPLETADO = 'triage.cuestionario.completado',
+  CLASIFICACION_COMPLETADA = 'triage.clasificacion.completada',
   VITALES_REGISTRADOS = 'triage.vitales.registrados',
   TRIAGE_CONFIRMADO = 'triage.confirmado',
   PACIENTE_LLAMADO = 'triage.paciente.llamado',

@@ -68,7 +68,7 @@ export class TurnoService {
         paciente_id: dto.paciente_id,
         tipo_turno: TipoTurno.URGENCIA,
         numero_turno: numeroTurno,
-        estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+        estado: EstadoTurno.CLASIFICACION_PENDIENTE,
         fecha: new Date(),
       },
       include: {
@@ -90,7 +90,7 @@ export class TurnoService {
       numero_turno: numeroTurno,
       hospital_id: dto.hospital_id,
       paciente_nombre: usuario ? `${usuario.nombre} ${usuario.apellido}` : 'Desconocido',
-      estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+      estado: EstadoTurno.CLASIFICACION_PENDIENTE,
       timestamp: new Date().toISOString(),
     });
 
@@ -100,7 +100,7 @@ export class TurnoService {
       hospital_id: dto.hospital_id,
       paciente_id: dto.paciente_id,
       tipo_turno: TipoTurno.URGENCIA,
-      estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+      estado: EstadoTurno.CLASIFICACION_PENDIENTE,
       fecha: new Date().toISOString(),
     });
 
@@ -110,7 +110,7 @@ export class TurnoService {
       hospital_id: dto.hospital_id,
       paciente_id: dto.paciente_id,
       tipo_turno: TipoTurno.URGENCIA,
-      estado: EstadoTurno.CUESTIONARIO_PENDIENTE,
+      estado: EstadoTurno.CLASIFICACION_PENDIENTE,
       fecha: new Date().toISOString(),
     });
 
