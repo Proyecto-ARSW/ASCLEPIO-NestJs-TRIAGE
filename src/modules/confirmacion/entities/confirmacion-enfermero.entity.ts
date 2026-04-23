@@ -3,7 +3,7 @@
 import { Field, ObjectType, Int } from '@nestjs/graphql';
 import { Enfermero } from '@/modules/shared/entities/enfermero.entity';
 import { NivelTriage } from '@/modules/shared/entities/nivel-triage.entity';
-import { RegistroTriage } from '@/modules/vitales/entities/registro-triage.entity';
+import { RegistroTriage } from '@/modules/shared/entities/registro-triage.entity';
 
 @ObjectType()
 export class ConfirmacionEnfermero {

@@ -197,24 +197,6 @@ export class DashboardPacienteService {
       completado: true,
     });
 
-    const evaluacionPreliminar = await this.prisma.evaluaciones_preliminares.findFirst({
-      where: { turno_id: turno.id },
-    });
-
-    if (evaluacionPreliminar) {
-      historial.push({
-        paso: 'Evaluación preliminar completada',
-        timestamp: evaluacionPreliminar.creado_en,
-        completado: true,
-      });
-    } else if (turno.estado === EstadoTurno.CUESTIONARIO_PENDIENTE) {
-      historial.push({
-        paso: 'Evaluación preliminar pendiente',
-        timestamp: new Date(),
-        completado: false,
-      });
-    }
-
     const registroTriage = await this.prisma.registros_triage.findFirst({
       where: { paciente_id: turno.paciente_id },
       orderBy: { creado_en: 'desc' },
@@ -222,11 +204,11 @@ export class DashboardPacienteService {
 
     if (registroTriage) {
       historial.push({
-        paso: 'Vitales registrados',
+        paso: 'Datos recibidos y clasificados',
         timestamp: registroTriage.creado_en,
         completado: true,
       });
-    } else if (turno.estado === EstadoTurno.ESPERANDO_VITALES) {
+    } else if (turno.estado === EstadoTurno.CLASIFICACION_PENDIENTE) {
       historial.push({
         paso: 'Esperando registro de vitales',
         timestamp: new Date(),

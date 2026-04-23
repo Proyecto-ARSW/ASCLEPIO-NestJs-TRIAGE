@@ -15,7 +15,6 @@ services:
       - '5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d asclepio"]
       interval: 10s
@@ -56,8 +55,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
       RABBITMQ_DEFAULT_VHOST: /
     ports:
-      - '5672:5672'   # AMQP
-      - '15672:15672' # Management UI
+      - '5672:5672'    # AMQP
+      - '15672:15672'  # Management UI → http://localhost:15672
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
@@ -69,57 +68,47 @@ services:
       - asclepio-network
 
   # ============================================
-  # Prometheus
+  # Prometheus (opcional — comentar si no se necesita)
   # ============================================
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: asclepio-triage-prometheus
-    restart: unless-stopped
-    ports:
-      - '9090:9090'
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.enable-lifecycle'
-    networks:
-      - asclepio-network
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: asclepio-triage-prometheus
+  #   restart: unless-stopped
+  #   ports:
+  #     - '9090:9090'
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #     - '--web.enable-lifecycle'
+  #   networks:
+  #     - asclepio-network
 
   # ============================================
-  # Grafana
+  # Grafana (opcional — comentar si no se necesita)
   # ============================================
-  grafana:
-    image: grafana/grafana:latest
-    container_name: asclepio-triage-grafana
-    restart: unless-stopped
-    ports:
-      - '4001:3000'
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-    depends_on:
-      - prometheus
-    networks:
-      - asclepio-network
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: asclepio-triage-grafana
+  #   restart: unless-stopped
+  #   ports:
+  #     - '4001:3000'
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - asclepio-network
 
   # ============================================
-  # Triage Service (Backend NestJS) - COMENTADO PARA DESARROLLO
+  # Triage Service — descomentar para producción
+  # Para desarrollo local usa: npm run start:dev
   # ============================================
-  # NOTA: Para desarrollo, es mejor correr el backend localmente con:
-  # npm run start:dev
-  # Esto permite hot-reload y debugging más fácil
-  #
-  # Para producción, descomenta este bloque y ejecuta:
-  # docker-compose up -d --build
-  #
   # triage-service:
   #   build:
   #     context: .
@@ -129,42 +118,22 @@ services:
   #   ports:
   #     - '3001:3001'
   #   environment:
-  #     # Base de datos
   #     DATABASE_URL: postgresql://postgres:postgres@postgres:5432/asclepio?schema=triage
-  #     
-  #     # Redis
   #     REDIS_HOST: redis
   #     REDIS_PORT: 6379
   #     REDIS_DB: 1
-  #     
-  #     # RabbitMQ
   #     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
   #     RABBITMQ_EXCHANGE: asclepio_exchange
   #     RABBITMQ_QUEUE_TRIAGE: triage_events
-  #     
-  #     # Microservicios externos
   #     OLLAMA_SERVICE_URL: http://ptia-ollama-prelim:3002
   #     CLASSIFIER_SERVICE_URL: http://ptia-triage-classifier:3003
   #     CORE_API_URL: http://asclepio-core:3000
-  #     
-  #     # API Config
   #     PORT: 3001
-  #     API_PREFIX: api/triage
   #     USE_API_GATEWAY: false
-  #     
-  #     # App Config
   #     NODE_ENV: production
-  #     LOG_LEVEL: info
-  #     
-  #     # JWT
   #     JWT_SECRET: your-super-secret-jwt-key-change-in-production
   #     JWT_REFRESH_SECRET: your-super-secret-refresh-key-change-in-production
-  #     JWT_EXPIRES_IN: 1h
-  #     JWT_REFRESH_EXPIRES_IN: 7d
-  #     
-  #     # CORS
   #     CORS_ORIGIN: http://localhost:5173,http://localhost:3000
-  #     FRONTEND_URL: http://localhost:5173
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
@@ -174,8 +143,6 @@ services:
   #       condition: service_healthy
   #   networks:
   #     - asclepio-network
-  #   volumes:
-  #     - ./logs:/app/logs
 
 volumes:
   postgres-data:
@@ -184,10 +151,10 @@ volumes:
     driver: local
   rabbitmq-data:
     driver: local
-  prometheus-data:
-    driver: local
-  grafana-data:
-    driver: local
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local
 
 networks:
   asclepio-network:

@@ -32,9 +32,6 @@ export class ConfirmacionService {
     // 1. Validar que el registro existe
     const registro = await this.prisma.registros_triage.findUnique({
       where: { id: dto.registro_triage_id },
-      include: {
-        evaluacion_preliminar: true,
-      },
     });
 
     if (!registro) {
@@ -240,7 +237,7 @@ export class ConfirmacionService {
       alerta_id: alerta.id,
       turno_id: turnoId,
       hospital_id: hospitalId,
-      paciente_id: turno.paciente_id,  // ← CORREGIDO: desde turno obtenido arriba
+      paciente_id: turno.paciente_id, 
       nivel_triage: nivelTriage,
       tipo_alerta: tipoAlerta as any,
     });
@@ -276,7 +273,6 @@ export class ConfirmacionService {
       include: {
         registro_triage: {
           include: {
-            evaluacion_preliminar: true,
           },
         },
         enfermero: true,
@@ -299,7 +295,6 @@ export class ConfirmacionService {
       include: {
         registro_triage: {
           include: {
-            evaluacion_preliminar: true,
           },
         },
       },
@@ -317,7 +312,6 @@ export class ConfirmacionService {
       include: {
         registro_triage: {
           include: {
-            evaluacion_preliminar: true,
           },
         },
       },

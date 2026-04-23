@@ -9,9 +9,304 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
-// ENUMS
-// ============================================
+model usuarios {
+  id                          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre                      String             @db.VarChar(100)
+  apellido                    String             @db.VarChar(100)
+  email                       String             @unique @db.VarChar(150)
+  password_hash               String
+  rol                         rol_usuario        @default(PACIENTE)
+  telefono                    String?            @db.VarChar(20)
+  activo                      Boolean            @default(true)
+  creado_en                   DateTime           @default(now()) @db.Timestamp(6)
+  actualizado_en              DateTime           @default(now()) @db.Timestamp(6)
+  alertas_criticas_confirmado alertas_criticas[] @relation("AlertaConfirmado")
+  alertas_criticas_notificado alertas_criticas[] @relation("AlertaNotificado")
+  alertas_triage_resuelto     alertas_triage[]
+  enfermeros                  enfermeros[]
+}
+
+model pacientes {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id       String             @db.Uuid
+  fecha_nacimiento DateTime?          @db.Date
+  tipo_sangre      String?            @db.VarChar(5)
+  numero_documento String?            @unique @db.VarChar(20)
+  tipo_documento   String?            @default("CC") @db.VarChar(20)
+  eps              String?            @db.VarChar(100)
+  alergias         String?
+  creado_en        DateTime           @default(now()) @db.Timestamp(6)
+  registros_triage registros_triage[]
+  turnos           turnos[]
+}
+
+model hospitales {
+  id                  Int                @id @default(autoincrement())
+  nombre              String             @db.VarChar(150)
+  nit                 String?            @unique @db.VarChar(20)
+  departamento        String             @db.VarChar(50)
+  ciudad              String             @db.VarChar(50)
+  direccion           String             @db.VarChar(200)
+  telefono            String?            @db.VarChar(20)
+  email_contacto      String?            @db.VarChar(150)
+  tipo_institucion    String?            @db.VarChar(50)
+  capacidad_urgencias Int?
+  numero_consultorios Int?               @db.SmallInt
+  activo              Boolean            @default(true)
+  latitud             Decimal?           @db.Decimal(10, 8)
+  longitud            Decimal?           @db.Decimal(11, 8)
+  creado_en           DateTime           @default(now()) @db.Timestamp(6)
+  actualizado_en      DateTime           @default(now()) @db.Timestamp(6)
+  alertas_criticas    alertas_criticas[]
+  alertas_triage      alertas_triage[]
+  registros_triage    registros_triage[]
+  turnos              turnos[]
+
+  @@index([ciudad], map: "idx_hospitales_ciudad")
+  @@index([activo], map: "idx_hospitales_activo")
+}
+
+model especialidades {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(100)
+  descripcion String?
+  turnos      turnos[]
+}
+
+model medicos {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id      String   @db.Uuid
+  especialidad_id Int
+  numero_registro String   @unique @db.VarChar(50)
+  consultorio     String?  @db.VarChar(20)
+  activo          Boolean  @default(true)
+  creado_en       DateTime @default(now()) @db.Timestamp(6)
+  turnos          turnos[]
+}
+
+model formacion {
+  id          Int          @id @default(autoincrement())
+  nombre      String       @unique @db.VarChar(100)
+  descripcion String?
+  enfermeros  enfermeros[]
+}
+
+model enfermeros {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id               String                     @db.Uuid
+  numero_registro          String                     @unique @db.VarChar(50)
+  nivel_formacion_id       Int
+  area_especializacion_id  Int?
+  certificacion_triage     Boolean                    @default(false)
+  fecha_certificacion      DateTime?                  @db.Date
+  activo                   Boolean                    @default(true)
+  creado_en                DateTime                   @default(now()) @db.Timestamp(6)
+  confirmaciones_enfermero confirmaciones_enfermero[]
+  disponibilidad_enfermero disponibilidad_enfermero[]
+  formacion                formacion                  @relation(fields: [nivel_formacion_id], references: [id])
+  usuarios                 usuarios                   @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  registros_triage         registros_triage[]
+  turnos_enfermero         turnos[]                   @relation("EnfermeroTriage")
+
+  @@index([usuario_id], map: "idx_enfermeros_usuario")
+  @@index([activo], map: "idx_enfermeros_activo")
+  @@index([certificacion_triage], map: "idx_enfermeros_certificacion")
+}
+
+model disponibilidad_enfermero {
+  id           Int        @id @default(autoincrement())
+  enfermero_id String     @db.Uuid
+  dia_semana   Int        @db.SmallInt
+  hora_inicio  DateTime   @db.Time(6)
+  hora_fin     DateTime   @db.Time(6)
+  activo       Boolean    @default(true)
+  enfermeros   enfermeros @relation(fields: [enfermero_id], references: [id], onDelete: Cascade)
+
+  @@unique([enfermero_id, dia_semana, hora_inicio])
+}
+
+model niveles_triage {
+  id                    Int                        @id @default(autoincrement())
+  nivel                 Int                        @unique @db.SmallInt
+  nombre                String                     @db.VarChar(50)
+  descripcion           String?
+  tiempo_max_espera_min Int                        @db.SmallInt
+  color_codigo          String?                    @db.VarChar(7)
+  activo                Boolean                    @default(true)
+  alertas_criticas      alertas_criticas[]
+  confirmaciones_final  confirmaciones_enfermero[] @relation("NivelFinal")
+  confirmaciones_ia     confirmaciones_enfermero[] @relation("NivelIA")
+  registros_sugerido    registros_triage[]         @relation("NivelSugerido")
+  registros_nivel       registros_triage[]         @relation("NivelTriage")
+  turnos                turnos[]
+}
+
+model registros_triage {
+  id                         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paciente_id                String                     @db.Uuid
+  hospital_id                Int
+  enfermero_id               String                     @db.Uuid
+  sintomas                   String[]
+  embarazo                   Boolean                    @default(false)
+  antecedentes               String[]
+  posibles_causas            String[]
+  nivel_preliminar_isisvoice Int                        @db.SmallInt
+  comentario_paciente        String?
+  presion_sistolica          Int                        @db.SmallInt
+  presion_diastolica         Int                        @db.SmallInt
+  frecuencia_cardiaca        Int                        @db.SmallInt
+  frecuencia_respiratoria    Int                        @db.SmallInt
+  temperatura                Decimal                    @db.Decimal(4, 2)
+  saturacion_oxigeno         Int                        @db.SmallInt
+  peso_kg                    Decimal?                   @db.Decimal(5, 2)
+  altura_cm                  Int?                       @db.SmallInt
+  nivel_triage_id            Int?
+  nivel_sugerido_ia          Int
+  confianza_ia               Decimal                    @db.Decimal(5, 4)
+  comentarios_ia             String?
+  probabilidad_nivel_1       Decimal?                   @db.Decimal(5, 4)
+  probabilidad_nivel_2       Decimal?                   @db.Decimal(5, 4)
+  probabilidad_nivel_3       Decimal?                   @db.Decimal(5, 4)
+  probabilidad_nivel_4       Decimal?                   @db.Decimal(5, 4)
+  probabilidad_nivel_5       Decimal?                   @db.Decimal(5, 4)
+  feature_mas_importante     String?                    @db.VarChar(100)
+  valor_feature_importante   Decimal?                   @db.Decimal(10, 4)
+  presion_arterial_media     Decimal?                   @db.Decimal(5, 2)
+  shock_index                Decimal?                   @db.Decimal(4, 2)
+  tiene_alertas_vitales      Boolean                    @default(false)
+  motivo_consulta            String
+  sintomas_observados        String?
+  observaciones              String?
+  tiempo_registro_ms         Int?
+  es_reclasificacion         Boolean                    @default(false)
+  triage_original_id         String?                    @db.Uuid
+  creado_en                  DateTime                   @default(now()) @db.Timestamp(6)
+  confirmaciones             confirmaciones_enfermero[]
+  enfermeros                 enfermeros                 @relation(fields: [enfermero_id], references: [id])
+  hospitales                 hospitales                 @relation(fields: [hospital_id], references: [id])
+  nivel_sugerido             niveles_triage             @relation("NivelSugerido", fields: [nivel_sugerido_ia], references: [id])
+  nivel_triage               niveles_triage?            @relation("NivelTriage", fields: [nivel_triage_id], references: [id])
+  pacientes                  pacientes                  @relation(fields: [paciente_id], references: [id])
+  triage_original            registros_triage?          @relation("TriageReclasificacion", fields: [triage_original_id], references: [id])
+  reclasificaciones          registros_triage[]         @relation("TriageReclasificacion")
+  turnos                     turnos[]
+
+  @@index([paciente_id], map: "idx_registros_triage_paciente")
+  @@index([hospital_id], map: "idx_registros_triage_hospital")
+  @@index([enfermero_id], map: "idx_registros_triage_enfermero")
+  @@index([creado_en], map: "idx_registros_triage_fecha")
+  @@index([nivel_triage_id], map: "idx_registros_triage_nivel")
+  @@index([nivel_sugerido_ia], map: "idx_registros_nivel_sugerido")
+  @@index([presion_sistolica], map: "idx_registros_presion")
+  @@index([tiene_alertas_vitales], map: "idx_registros_alertas")
+  @@index([nivel_preliminar_isisvoice, creado_en], map: "idx_registros_prioridad")
+}
+
+model confirmaciones_enfermero {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  registro_triage_id     String           @db.Uuid
+  enfermero_id           String           @db.Uuid
+  nivel_sugerido_ia      Int
+  nivel_final_enfermero  Int
+  acepto_sugerencia      Boolean
+  razon_modificacion     String?
+  tipo_modificacion      String?          @db.VarChar(20)
+  diferencia_niveles     Int?             @db.SmallInt
+  tiempo_confirmacion_ms Int?
+  creado_en              DateTime         @default(now()) @db.Timestamp(6)
+  enfermero              enfermeros       @relation(fields: [enfermero_id], references: [id])
+  nivel_final            niveles_triage   @relation("NivelFinal", fields: [nivel_final_enfermero], references: [id])
+  nivel_ia               niveles_triage   @relation("NivelIA", fields: [nivel_sugerido_ia], references: [id])
+  registro_triage        registros_triage @relation(fields: [registro_triage_id], references: [id])
+
+  @@index([enfermero_id], map: "idx_confirmaciones_enfermero")
+  @@index([acepto_sugerencia], map: "idx_confirmaciones_acepto")
+  @@index([creado_en], map: "idx_confirmaciones_fecha")
+  @@index([tipo_modificacion], map: "idx_confirmaciones_tipo")
+}
+
+model turnos {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hospital_id           Int
+  paciente_id           String             @db.Uuid
+  tipo_turno            tipo_turno
+  medico_id             String?            @db.Uuid
+  especialidad_id       Int?
+  fecha_hora_programada DateTime?          @db.Timestamp(6)
+  registro_triage_id    String?            @db.Uuid
+  enfermero_triage_id   String?            @db.Uuid
+  nivel_triage_id       Int?
+  numero_turno          Int                @db.SmallInt
+  estado                estado_turno       @default(CLASIFICACION_PENDIENTE)
+  llamado_en            DateTime?          @db.Timestamp(6)
+  atendido_en           DateTime?          @db.Timestamp(6)
+  finalizado_en         DateTime?          @db.Timestamp(6)
+  fecha                 DateTime           @default(dbgenerated("CURRENT_DATE")) @db.Date
+  creado_en             DateTime           @default(now()) @db.Timestamp(6)
+  actualizado_en        DateTime           @default(now()) @db.Timestamp(6)
+  alertas_criticas      alertas_criticas[]
+  alertas_triage        alertas_triage[]
+  enfermero_triage      enfermeros?        @relation("EnfermeroTriage", fields: [enfermero_triage_id], references: [id])
+  especialidades        especialidades?    @relation(fields: [especialidad_id], references: [id])
+  hospitales            hospitales         @relation(fields: [hospital_id], references: [id])
+  medicos               medicos?           @relation(fields: [medico_id], references: [id])
+  nivel_triage          niveles_triage?    @relation(fields: [nivel_triage_id], references: [id])
+  pacientes             pacientes          @relation(fields: [paciente_id], references: [id])
+  registro_triage       registros_triage?  @relation(fields: [registro_triage_id], references: [id])
+
+  @@unique([hospital_id, fecha, numero_turno, tipo_turno])
+  @@index([hospital_id, tipo_turno, medico_id, fecha_hora_programada], map: "idx_turnos_consulta")
+  @@index([hospital_id, tipo_turno, nivel_triage_id, estado, creado_en], map: "idx_turnos_urgencia")
+  @@index([paciente_id, fecha], map: "idx_turnos_paciente")
+  @@index([hospital_id, estado, fecha], map: "idx_turnos_estado")
+  @@index([enfermero_triage_id], map: "idx_turnos_enfermero")
+}
+
+model alertas_criticas {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  turno_id       String              @db.Uuid
+  hospital_id    Int
+  nivel_triage   Int
+  tipo_alerta    tipo_alerta_critica
+  notificado_a   String?             @db.Uuid
+  confirmada     Boolean             @default(false)
+  confirmada_por String?             @db.Uuid
+  confirmada_en  DateTime?           @db.Timestamp(6)
+  escalada       Boolean             @default(false)
+  escalada_en    DateTime?           @db.Timestamp(6)
+  activa         Boolean             @default(true)
+  creado_en      DateTime            @default(now()) @db.Timestamp(6)
+  confirmado     usuarios?           @relation("AlertaConfirmado", fields: [confirmada_por], references: [id])
+  hospital       hospitales          @relation(fields: [hospital_id], references: [id])
+  nivel          niveles_triage      @relation(fields: [nivel_triage], references: [id])
+  notificado     usuarios?           @relation("AlertaNotificado", fields: [notificado_a], references: [id])
+  turno          turnos              @relation(fields: [turno_id], references: [id])
+
+  @@index([hospital_id, confirmada, creado_en], map: "idx_alertas_criticas_hospital")
+  @@index([turno_id], map: "idx_alertas_criticas_turno")
+  @@index([tipo_alerta, confirmada], map: "idx_alertas_criticas_tipo")
+  @@index([activa, escalada], map: "idx_alertas_criticas_activa")
+}
+
+model alertas_triage {
+  id                      String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  turno_id                String     @db.Uuid
+  hospital_id             Int
+  tipo_alerta             String     @db.VarChar(50)
+  nivel_severidad         String     @db.VarChar(20)
+  mensaje                 String
+  tiempo_excedido_minutos Int?       @db.SmallInt
+  resuelta                Boolean    @default(false)
+  resuelta_por            String?    @db.Uuid
+  resuelta_en             DateTime?  @db.Timestamp(6)
+  creado_en               DateTime   @default(now()) @db.Timestamp(6)
+  hospital                hospitales @relation(fields: [hospital_id], references: [id])
+  resuelto                usuarios?  @relation(fields: [resuelta_por], references: [id])
+  turno                   turnos     @relation(fields: [turno_id], references: [id])
+
+  @@index([hospital_id, resuelta, creado_en], map: "idx_alertas_hospital")
+  @@index([turno_id], map: "idx_alertas_turno")
+}
 
 enum rol_usuario {
   PACIENTE
@@ -23,9 +318,8 @@ enum rol_usuario {
 }
 
 enum estado_turno {
-  CUESTIONARIO_PENDIENTE
-  ESPERANDO_VITALES
-  TRIAGE_COMPLETO
+  CLASIFICACION_PENDIENTE
+  ESPERANDO_CONFIRMACION
   EN_ESPERA
   EN_CONSULTA
   ATENDIDO
@@ -41,420 +335,4 @@ enum tipo_alerta_critica {
   TRIAGE_CRITICO
   TRIAGE_ESCALADO
   TRIAGE_CRITICO_PRELIMINAR
-}
-
-// ============================================
-// MODELOS
-// ============================================
-
-model usuarios {
-  id                              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre                          String                @db.VarChar(100)
-  apellido                        String                @db.VarChar(100)
-  email                           String                @unique @db.VarChar(150)
-  password_hash                   String
-  rol                             rol_usuario           @default(PACIENTE)
-  telefono                        String?               @db.VarChar(20)
-  activo                          Boolean               @default(true)
-  creado_en                       DateTime              @default(now()) @db.Timestamp(6)
-  actualizado_en                  DateTime              @default(now()) @db.Timestamp(6)
-  
-  enfermeros                      enfermeros[]
-  alertas_criticas_notificado     alertas_criticas[]    @relation("AlertaNotificado")
-  alertas_criticas_confirmado     alertas_criticas[]    @relation("AlertaConfirmado")
-  alertas_triage_resuelto         alertas_triage[]
-}
-
-model pacientes {
-  id                          String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuario_id                  String                      @db.Uuid
-  fecha_nacimiento            DateTime?                   @db.Date
-  tipo_sangre                 String?                     @db.VarChar(5)
-  numero_documento            String?                     @unique @db.VarChar(20)
-  tipo_documento              String?                     @default("CC") @db.VarChar(20)
-  eps                         String?                     @db.VarChar(100)
-  alergias                    String?
-  creado_en                   DateTime                    @default(now()) @db.Timestamp(6)
-  
-  evaluaciones_preliminares   evaluaciones_preliminares[]
-  registros_triage            registros_triage[]
-  turnos                      turnos[]
-}
-
-model hospitales {
-  id                          Int                         @id @default(autoincrement())
-  nombre                      String                      @db.VarChar(150)
-  nit                         String?                     @unique @db.VarChar(20)
-  departamento                String                      @db.VarChar(50)
-  ciudad                      String                      @db.VarChar(50)
-  direccion                   String                      @db.VarChar(200)
-  telefono                    String?                     @db.VarChar(20)
-  email_contacto              String?                     @db.VarChar(150)
-  tipo_institucion            String?                     @db.VarChar(50)
-  capacidad_urgencias         Int?
-  numero_consultorios         Int?                        @db.SmallInt
-  activo                      Boolean                     @default(true)
-  latitud                     Decimal?                    @db.Decimal(10, 8)
-  longitud                    Decimal?                    @db.Decimal(11, 8)
-  creado_en                   DateTime                    @default(now()) @db.Timestamp(6)
-  actualizado_en              DateTime                    @default(now()) @db.Timestamp(6)
-  
-  evaluaciones_preliminares   evaluaciones_preliminares[]
-  registros_triage            registros_triage[]
-  turnos                      turnos[]
-  alertas_criticas            alertas_criticas[]
-  alertas_triage              alertas_triage[]
-  
-  @@index([ciudad], map: "idx_hospitales_ciudad")
-  @@index([activo], map: "idx_hospitales_activo")
-}
-
-model especialidades {
-  id          Int       @id @default(autoincrement())
-  nombre      String    @unique @db.VarChar(100)
-  descripcion String?
-  turnos      turnos[]
-}
-
-model medicos {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuario_id      String    @db.Uuid
-  especialidad_id Int
-  numero_registro String    @unique @db.VarChar(50)
-  consultorio     String?   @db.VarChar(20)
-  activo          Boolean   @default(true)
-  creado_en       DateTime  @default(now()) @db.Timestamp(6)
-  
-  turnos          turnos[]
-}
-
-model formacion {
-  id          Int          @id @default(autoincrement())
-  nombre      String       @unique @db.VarChar(100)
-  descripcion String?
-  enfermeros  enfermeros[]
-}
-
-model enfermeros {
-  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuario_id                String                      @db.Uuid
-  numero_registro           String                      @unique @db.VarChar(50)
-  nivel_formacion_id        Int
-  area_especializacion_id   Int?
-  certificacion_triage      Boolean                     @default(false)
-  fecha_certificacion       DateTime?                   @db.Date
-  activo                    Boolean                     @default(true)
-  creado_en                 DateTime                    @default(now()) @db.Timestamp(6)
-  
-  usuarios                  usuarios                    @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  formacion                 formacion                   @relation(fields: [nivel_formacion_id], references: [id])
-  
-  registros_triage          registros_triage[]
-  confirmaciones_enfermero  confirmaciones_enfermero[]
-  turnos_enfermero          turnos[]                    @relation("EnfermeroTriage")
-  disponibilidad_enfermero  disponibilidad_enfermero[]
-  
-  @@index([usuario_id], map: "idx_enfermeros_usuario")
-  @@index([activo], map: "idx_enfermeros_activo")
-  @@index([certificacion_triage], map: "idx_enfermeros_certificacion")
-}
-
-model disponibilidad_enfermero {
-  id           Int        @id @default(autoincrement())
-  enfermero_id String     @db.Uuid
-  dia_semana   Int        @db.SmallInt
-  hora_inicio  DateTime   @db.Time(6)
-  hora_fin     DateTime   @db.Time(6)
-  activo       Boolean    @default(true)
-  
-  enfermeros   enfermeros @relation(fields: [enfermero_id], references: [id], onDelete: Cascade)
-  
-  @@unique([enfermero_id, dia_semana, hora_inicio])
-}
-
-model niveles_triage {
-  id                      Int                           @id @default(autoincrement())
-  nivel                   Int                           @unique @db.SmallInt
-  nombre                  String                        @db.VarChar(50)
-  descripcion             String?
-  tiempo_max_espera_min   Int                           @db.SmallInt
-  color_codigo            String?                       @db.VarChar(7)
-  activo                  Boolean                       @default(true)
-  
-  evaluaciones_preliminar evaluaciones_preliminares[]   @relation("NivelPreliminar")
-  registros_nivel         registros_triage[]            @relation("NivelTriage")
-  registros_sugerido      registros_triage[]            @relation("NivelSugerido")
-  confirmaciones_ia       confirmaciones_enfermero[]    @relation("NivelIA")
-  confirmaciones_final    confirmaciones_enfermero[]    @relation("NivelFinal")
-  turnos                  turnos[]
-  alertas_criticas        alertas_criticas[]
-}
-
-// ============================================
-// TABLA PRINCIPAL: evaluaciones_preliminares
-// ============================================
-
-model evaluaciones_preliminares {
-  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  paciente_id             String            @db.Uuid
-  hospital_id             Int
-  turno_id                String            @db.Uuid
-  
-  // DATOS EXTRAÍDOS POR OLLAMA
-  sintomas                String[]
-  embarazo                Boolean           @default(false)
-  antecedentes            String[]
-  posibles_causas         String[]
-  
-  // EVALUACIÓN DE OLLAMA
-  nivel_prioridad         Int               @db.SmallInt
-  comentario_paciente     String?
-  comentarios_ia          String?
-  advertencia_ia          String?           @default("Contenido generado con IA; puede contener errores.")
-  
-  // METADATOS DE OLLAMA
-  confidence_score        Decimal?          @db.Decimal(5, 4)
-  procedure_id            String?           @db.VarChar(100)
-  status                  String?           @db.VarChar(50)
-  
-  creado_en               DateTime          @default(now()) @db.Timestamp(6)
-  actualizado_en          DateTime          @default(now()) @db.Timestamp(6)
-  
-  pacientes               pacientes         @relation(fields: [paciente_id], references: [id])
-  hospitales              hospitales        @relation(fields: [hospital_id], references: [id])
-  turnos                  turnos            @relation(fields: [turno_id], references: [id])
-  nivel_preliminar        niveles_triage?   @relation("NivelPreliminar", fields: [nivel_prioridad], references: [nivel])
-  
-  registros_triage        registros_triage[]
-  
-  @@index([paciente_id], map: "idx_evaluaciones_paciente")
-  @@index([turno_id], map: "idx_evaluaciones_turno")
-  @@index([hospital_id, nivel_prioridad, creado_en], map: "idx_evaluaciones_prioridad")
-  @@index([nivel_prioridad, creado_en], map: "idx_evaluaciones_cola")
-  @@index([embarazo], map: "idx_evaluaciones_embarazo")
-  @@index([procedure_id], map: "idx_evaluaciones_procedure")
-}
-
-// ============================================
-// TABLA: registros_triage
-// ============================================
-
-model registros_triage {
-  id                        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  paciente_id               String                    @db.Uuid
-  hospital_id               Int
-  enfermero_id              String                    @db.Uuid
-  evaluacion_preliminar_id  String                    @db.Uuid
-  
-  // SIGNOS VITALES
-  presion_sistolica         Int                       @db.SmallInt
-  presion_diastolica        Int                       @db.SmallInt
-  frecuencia_cardiaca       Int                       @db.SmallInt
-  frecuencia_respiratoria   Int                       @db.SmallInt
-  temperatura               Decimal                   @db.Decimal(4, 2)
-  saturacion_oxigeno        Int                       @db.SmallInt
-  peso_kg                   Decimal?                  @db.Decimal(5, 2)
-  altura_cm                 Int?                      @db.SmallInt
-  
-  // CLASIFICACIÓN IA
-  nivel_triage_id           Int?
-  nivel_sugerido_ia         Int
-  confianza_ia              Decimal                   @db.Decimal(5, 4)
-  comentarios_ia            String?
-  
-  // PROBABILIDADES
-  probabilidad_nivel_1      Decimal?                  @db.Decimal(5, 4)
-  probabilidad_nivel_2      Decimal?                  @db.Decimal(5, 4)
-  probabilidad_nivel_3      Decimal?                  @db.Decimal(5, 4)
-  probabilidad_nivel_4      Decimal?                  @db.Decimal(5, 4)
-  probabilidad_nivel_5      Decimal?                  @db.Decimal(5, 4)
-  
-  // FEATURES IMPORTANTES
-  feature_mas_importante    String?                   @db.VarChar(100)
-  valor_feature_importante  Decimal?                  @db.Decimal(10, 4)
-  
-  // CAMPOS CALCULADOS
-  presion_arterial_media    Decimal?                  @db.Decimal(5, 2)
-  shock_index               Decimal?                  @db.Decimal(4, 2)
-  tiene_alertas_vitales     Boolean                   @default(false)
-  
-  // OBSERVACIONES
-  motivo_consulta           String
-  sintomas_observados       String?
-  observaciones             String?
-  
-  // METADATOS
-  tiempo_registro_ms        Int?
-  es_reclasificacion        Boolean                   @default(false)
-  triage_original_id        String?                   @db.Uuid
-  
-  creado_en                 DateTime                  @default(now()) @db.Timestamp(6)
-  
-  pacientes                 pacientes                 @relation(fields: [paciente_id], references: [id])
-  hospitales                hospitales                @relation(fields: [hospital_id], references: [id])
-  enfermeros                enfermeros                @relation(fields: [enfermero_id], references: [id])
-  evaluacion_preliminar     evaluaciones_preliminares @relation(fields: [evaluacion_preliminar_id], references: [id])
-  nivel_triage              niveles_triage?           @relation("NivelTriage", fields: [nivel_triage_id], references: [id])
-  nivel_sugerido            niveles_triage?           @relation("NivelSugerido", fields: [nivel_sugerido_ia], references: [id])
-  triage_original           registros_triage?         @relation("TriageReclasificacion", fields: [triage_original_id], references: [id])
-  
-  reclasificaciones         registros_triage[]        @relation("TriageReclasificacion")
-  confirmaciones            confirmaciones_enfermero[]
-  turnos                    turnos[]
-  
-  @@index([paciente_id], map: "idx_registros_triage_paciente")
-  @@index([hospital_id], map: "idx_registros_triage_hospital")
-  @@index([enfermero_id], map: "idx_registros_triage_enfermero")
-  @@index([evaluacion_preliminar_id], map: "idx_registros_evaluacion")
-  @@index([creado_en], map: "idx_registros_triage_fecha")
-  @@index([nivel_triage_id], map: "idx_registros_triage_nivel")
-  @@index([nivel_sugerido_ia], map: "idx_registros_nivel_sugerido")
-  @@index([presion_sistolica], map: "idx_registros_presion")
-  @@index([tiene_alertas_vitales], map: "idx_registros_alertas")
-}
-
-// ============================================
-// TABLA: confirmaciones_enfermero
-// ============================================
-
-model confirmaciones_enfermero {
-  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  registro_triage_id      String            @db.Uuid
-  enfermero_id            String            @db.Uuid
-  
-  nivel_sugerido_ia       Int
-  nivel_final_enfermero   Int
-  
-  acepto_sugerencia       Boolean
-  razon_modificacion      String?
-  
-  tipo_modificacion       String?           @db.VarChar(20)
-  diferencia_niveles      Int?              @db.SmallInt
-  
-  tiempo_confirmacion_ms  Int?
-  
-  creado_en               DateTime          @default(now()) @db.Timestamp(6)
-  
-  registro_triage         registros_triage  @relation(fields: [registro_triage_id], references: [id])
-  enfermero               enfermeros        @relation(fields: [enfermero_id], references: [id])
-  nivel_ia                niveles_triage    @relation("NivelIA", fields: [nivel_sugerido_ia], references: [id])
-  nivel_final             niveles_triage    @relation("NivelFinal", fields: [nivel_final_enfermero], references: [id])
-  
-  @@index([enfermero_id], map: "idx_confirmaciones_enfermero")
-  @@index([acepto_sugerencia], map: "idx_confirmaciones_acepto")
-  @@index([creado_en], map: "idx_confirmaciones_fecha")
-  @@index([tipo_modificacion], map: "idx_confirmaciones_tipo")
-}
-
-// ============================================
-// TABLA: turnos
-// ============================================
-
-model turnos {
-  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hospital_id             Int
-  paciente_id             String                    @db.Uuid
-  
-  tipo_turno              tipo_turno
-  
-  medico_id               String?                   @db.Uuid
-  especialidad_id         Int?
-  fecha_hora_programada   DateTime?                 @db.Timestamp(6)
-  
-  registro_triage_id      String?                   @db.Uuid
-  enfermero_triage_id     String?                   @db.Uuid
-  nivel_triage_id         Int?
-  
-  numero_turno            Int                       @db.SmallInt
-  estado                  estado_turno              @default(CUESTIONARIO_PENDIENTE)
-  
-  llamado_en              DateTime?                 @db.Timestamp(6)
-  atendido_en             DateTime?                 @db.Timestamp(6)
-  finalizado_en           DateTime?                 @db.Timestamp(6)
-  
-  fecha                   DateTime                  @default(dbgenerated("CURRENT_DATE")) @db.Date
-  creado_en               DateTime                  @default(now()) @db.Timestamp(6)
-  actualizado_en          DateTime                  @default(now()) @db.Timestamp(6)
-  
-  hospitales              hospitales                @relation(fields: [hospital_id], references: [id])
-  pacientes               pacientes                 @relation(fields: [paciente_id], references: [id])
-  medicos                 medicos?                  @relation(fields: [medico_id], references: [id])
-  especialidades          especialidades?           @relation(fields: [especialidad_id], references: [id])
-  registro_triage         registros_triage?         @relation(fields: [registro_triage_id], references: [id])
-  enfermero_triage        enfermeros?               @relation("EnfermeroTriage", fields: [enfermero_triage_id], references: [id])
-  nivel_triage            niveles_triage?           @relation(fields: [nivel_triage_id], references: [id])
-  
-  evaluaciones            evaluaciones_preliminares[]
-  alertas_criticas        alertas_criticas[]
-  alertas_triage          alertas_triage[]
-  
-  @@unique([hospital_id, fecha, numero_turno, tipo_turno])
-  @@index([hospital_id, tipo_turno, medico_id, fecha_hora_programada], map: "idx_turnos_consulta")
-  @@index([hospital_id, tipo_turno, nivel_triage_id, estado, creado_en], map: "idx_turnos_urgencia")
-  @@index([paciente_id, fecha], map: "idx_turnos_paciente")
-  @@index([hospital_id, estado, fecha], map: "idx_turnos_estado")
-  @@index([enfermero_triage_id], map: "idx_turnos_enfermero")
-}
-
-// ============================================
-// TABLA: alertas_criticas
-// ============================================
-
-model alertas_criticas {
-  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  turno_id        String                @db.Uuid
-  hospital_id     Int
-  nivel_triage    Int
-  
-  tipo_alerta     tipo_alerta_critica
-  
-  notificado_a    String?               @db.Uuid
-  confirmada      Boolean               @default(false)
-  confirmada_por  String?               @db.Uuid
-  confirmada_en   DateTime?             @db.Timestamp(6)
-  
-  escalada        Boolean               @default(false)
-  escalada_en     DateTime?             @db.Timestamp(6)
-  
-  activa          Boolean               @default(true)
-  
-  creado_en       DateTime              @default(now()) @db.Timestamp(6)
-  
-  turno           turnos                @relation(fields: [turno_id], references: [id])
-  hospital        hospitales            @relation(fields: [hospital_id], references: [id])
-  nivel           niveles_triage        @relation(fields: [nivel_triage], references: [id])
-  notificado      usuarios?             @relation("AlertaNotificado", fields: [notificado_a], references: [id])
-  confirmado      usuarios?             @relation("AlertaConfirmado", fields: [confirmada_por], references: [id])
-  
-  @@index([hospital_id, confirmada, creado_en], map: "idx_alertas_criticas_hospital")
-  @@index([turno_id], map: "idx_alertas_criticas_turno")
-  @@index([tipo_alerta, confirmada], map: "idx_alertas_criticas_tipo")
-  @@index([activa, escalada], map: "idx_alertas_criticas_activa")
-}
-
-// ============================================
-// TABLA: alertas_triage
-// ============================================
-
-model alertas_triage {
-  id                      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  turno_id                String      @db.Uuid
-  hospital_id             Int
-  tipo_alerta             String      @db.VarChar(50)
-  nivel_severidad         String      @db.VarChar(20)
-  mensaje                 String
-  tiempo_excedido_minutos Int?        @db.SmallInt
-  
-  resuelta                Boolean     @default(false)
-  resuelta_por            String?     @db.Uuid
-  resuelta_en             DateTime?   @db.Timestamp(6)
-  
-  creado_en               DateTime    @default(now()) @db.Timestamp(6)
-  
-  turno                   turnos      @relation(fields: [turno_id], references: [id])
-  hospital                hospitales  @relation(fields: [hospital_id], references: [id])
-  resuelto                usuarios?   @relation(fields: [resuelta_por], references: [id])
-  
-  @@index([hospital_id, resuelta, creado_en], map: "idx_alertas_hospital")
-  @@index([turno_id], map: "idx_alertas_turno")
 }

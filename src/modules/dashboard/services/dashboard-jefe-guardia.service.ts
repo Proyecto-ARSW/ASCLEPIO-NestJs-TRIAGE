@@ -211,7 +211,6 @@ export class DashboardJefeGuardiaService {
    * Obtiene estado de enfermeros
    */
   private async obtenerEstadoEnfermeros(hospitalId: number) {
-    // REMOVIDO: filtro por hospital_usuario (no existe)
     const enfermeros = await this.prisma.enfermeros.findMany({
       where: {
         activo: true,
@@ -229,7 +228,7 @@ export class DashboardJefeGuardiaService {
             hospital_id: hospitalId, 
             enfermero_triage_id: enfermero.id,
             estado: {
-              in: [EstadoTurno.ESPERANDO_VITALES, EstadoTurno.TRIAGE_COMPLETO],
+              in: [EstadoTurno.ESPERANDO_CONFIRMACION, EstadoTurno.ESPERANDO_CONFIRMACION],
             },
           },
           orderBy: { actualizado_en: 'desc' },

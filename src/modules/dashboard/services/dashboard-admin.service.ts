@@ -210,11 +210,7 @@ export class DashboardAdminService {
         },
       },
       include: {
-        registro_triage: {
-          include: {
-            evaluacion_preliminar: true, 
-          },
-        },
+        registro_triage: true
       },
     });
 
@@ -222,12 +218,12 @@ export class DashboardAdminService {
     const aceptadas = confirmaciones.filter((c) => c.acepto_sugerencia).length;
 
 
-    const conOllama = confirmaciones.filter(
-      (c) => c.registro_triage.evaluacion_preliminar !== null,
+    const conPreclasificacion = confirmaciones.filter(
+      (c) => c.registro_triage.nivel_preliminar_isisvoice != null,
     );
-    const ollamaCorrectos = conOllama.filter((c) => c.acepto_sugerencia).length;
+    const ollamaCorrectos = conPreclasificacion.filter((c) => c.acepto_sugerencia).length;
     const precisionOllama =
-      conOllama.length > 0 ? (ollamaCorrectos / conOllama.length) * 100 : 0;
+      conPreclasificacion.length > 0 ? (ollamaCorrectos / conPreclasificacion.length) * 100 : 0;
 
     const precisionRF = (aceptadas / total) * 100;
 
