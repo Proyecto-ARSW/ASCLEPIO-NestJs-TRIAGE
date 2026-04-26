@@ -14,22 +14,24 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     try {
+      const useTls = this.configService.get<string>('redis.tls') === 'true';
+
       const redisConfig = {
         host: this.configService.get<string>('redis.host') || 'localhost',
         port: this.configService.get<number>('redis.port') || 6379,
         db: this.configService.get<number>('redis.db') || 0,
         password: this.configService.get<string>('redis.password') || undefined,
         keyPrefix: this.configService.get<string>('redis.keyPrefix') || 'triage:',
+        tls: useTls ? {} : undefined,
         retryStrategy: (times: number) => {
           if (times > 3) {
             this.logger.warn('Redis: Máximo de reintentos alcanzado');
             return null;
           }
-          const delay = Math.min(times * 50, 2000);
-          return delay;
+          return Math.min(times * 50, 2000);
         },
         maxRetriesPerRequest: 3,
-        lazyConnect: true, 
+        lazyConnect: true,
       };
 
       this.logger.log('Conectando a Redis...');

@@ -1,6 +1,6 @@
 // src/modules/turnos/dto/finalizar-turno.dto.ts
 
-import { IsUUID, IsString } from 'class-validator';
+import { IsUUID, IsString, IsOptional } from 'class-validator';
 import { Field, InputType } from '@nestjs/graphql';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -35,6 +35,7 @@ export class FinalizarTurnoDto {
     example: 'Paciente refiere cefalea persistente',
   })
   @Field({ nullable: true })
+  @IsOptional()
   @IsString()
   observaciones?: string;
 }
