@@ -11,10 +11,7 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class TriageDataISISvoiceDto {
-  @IsString()
-  idpaciente: string;
-
+export class PreliminaryHistoryISISvoiceDto {
   @IsArray()
   @IsString({ each: true })
   sintomas: string[];
@@ -80,14 +77,32 @@ export class VitalSignsISISvoiceDto {
   height_cm?: number;
 }
 
+export class CommentISISvoiceDto {
+  @IsString()
+  @IsOptional()
+  id?: string;
+
+  @IsString()
+  @IsOptional()
+  comment?: string;
+
+  @IsString()
+  @IsOptional()
+  author?: string;
+
+  @IsString()
+  @IsOptional()
+  created_at?: string;
+}
+
 export class IngresoISISvoiceDto {
   @ApiProperty({ example: '1032456789_20260406015148' })
   @IsString()
   procedure_id: string;
 
-  @ApiProperty({ example: '1032456789' })
+  @ApiProperty({ example: '1032456789', description: 'Cédula del paciente' })
   @IsString()
-  patient_cedula: string;
+  patient_id: string;
 
   @ApiPropertyOptional()
   @IsString()
@@ -101,8 +116,8 @@ export class IngresoISISvoiceDto {
 
   @ApiProperty()
   @ValidateNested()
-  @Type(() => TriageDataISISvoiceDto)
-  triage_data: TriageDataISISvoiceDto;
+  @Type(() => PreliminaryHistoryISISvoiceDto)
+  preliminary_history: PreliminaryHistoryISISvoiceDto;
 
   @ApiPropertyOptional()
   @IsNumber()
@@ -118,4 +133,26 @@ export class IngresoISISvoiceDto {
   @ValidateNested()
   @Type(() => VitalSignsISISvoiceDto)
   vital_signs: VitalSignsISISvoiceDto;
+
+  @ApiPropertyOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CommentISISvoiceDto)
+  @IsOptional()
+  comments?: CommentISISvoiceDto[];
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  created_at?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  updated_at?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  webhook_delivery?: string;
 }

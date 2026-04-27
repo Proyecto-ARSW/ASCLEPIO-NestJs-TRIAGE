@@ -261,50 +261,50 @@ export class RecepcionService {
   }
 
     async procesarIngresoISISvoice(
-    isisDto: IngresoISISvoiceDto,
-    hospitalId: number,
-    enfermeroId: string,
-  ) {
-    this.logger.log(
-      `Ingreso ISISvoice — Cedula: ${isisDto.patient_cedula}, Procedure: ${isisDto.procedure_id}`,
-    );
+  isisDto: IngresoISISvoiceDto,
+  hospitalId: number,
+  enfermeroId: string,
+) {
+  this.logger.log(
+    `Ingreso ISISvoice — patient_id: ${isisDto.patient_id}, Procedure: ${isisDto.procedure_id}`,
+  );
 
-    const paciente = await this.coreClient.buscarPacientePorDocumento(
-      isisDto.patient_cedula,
-    );
+  const paciente = await this.coreClient.buscarPacientePorDocumento(
+    isisDto.patient_id,
+  );
 
-    const dto: IngresoTriageDto = {
-      paciente_id: paciente.id,
-      hospital_id: hospitalId,
-      enfermero_id: enfermeroId,
+  const dto: IngresoTriageDto = {
+    paciente_id: paciente.id,
+    hospital_id: hospitalId,
+    enfermero_id: enfermeroId,
 
-      motivo_consulta:
-        isisDto.transcript ||
-        isisDto.triage_data.comentario ||
-        'Sin descripción registrada',
+    motivo_consulta:
+      isisDto.transcript ||
+      isisDto.preliminary_history.comentario ||
+      'Sin descripción registrada',
 
-      sintomas: isisDto.triage_data.sintomas ?? [],
-      embarazo: isisDto.triage_data.embarazo ?? false,
-      antecedentes: isisDto.triage_data.antecedentes ?? [],
-      posibles_causas: isisDto.triage_data.posiblesCausas ?? [],
-      nivel_preliminar_isisvoice: isisDto.triage_data.nivelPrioridad ?? 3,
-      comentario_paciente: isisDto.triage_data.comentario,
+    sintomas: isisDto.preliminary_history.sintomas ?? [],
+    embarazo: isisDto.preliminary_history.embarazo ?? false,
+    antecedentes: isisDto.preliminary_history.antecedentes ?? [],
+    posibles_causas: isisDto.preliminary_history.posiblesCausas ?? [],
+    nivel_preliminar_isisvoice: isisDto.preliminary_history.nivelPrioridad ?? 3,
+    comentario_paciente: isisDto.preliminary_history.comentario,
 
-      presion_sistolica: isisDto.vital_signs.systolic_bp_mmhg,
-      presion_diastolica: isisDto.vital_signs.diastolic_bp_mmhg,
-      frecuencia_cardiaca: isisDto.vital_signs.heart_rate_bpm,
-      frecuencia_respiratoria: isisDto.vital_signs.respiratory_rate_bpm,
-      temperatura: isisDto.vital_signs.temperature_c,
-      saturacion_oxigeno: isisDto.vital_signs.oxygen_saturation_pct,
-      peso_kg: isisDto.vital_signs.weight_kg,
-      altura_cm: isisDto.vital_signs.height_cm,
+    presion_sistolica: isisDto.vital_signs.systolic_bp_mmhg,
+    presion_diastolica: isisDto.vital_signs.diastolic_bp_mmhg,
+    frecuencia_cardiaca: isisDto.vital_signs.heart_rate_bpm,
+    frecuencia_respiratoria: isisDto.vital_signs.respiratory_rate_bpm,
+    temperatura: isisDto.vital_signs.temperature_c,
+    saturacion_oxigeno: isisDto.vital_signs.oxygen_saturation_pct,
+    peso_kg: isisDto.vital_signs.weight_kg,
+    altura_cm: isisDto.vital_signs.height_cm,
 
-      observaciones_enfermero: isisDto.triage_data.comentariosIA
-        ? `IA: ${isisDto.triage_data.comentariosIA}`
-        : undefined,
-    };
+    observaciones_enfermero: isisDto.preliminary_history.comentariosIA
+      ? `IA: ${isisDto.preliminary_history.comentariosIA}`
+      : undefined,
+  };
 
-    return this.procesarIngreso(dto);
-  }
+  return this.procesarIngreso(dto);
+}
 }
 
