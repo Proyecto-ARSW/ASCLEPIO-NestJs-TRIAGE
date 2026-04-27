@@ -1,5 +1,3 @@
-// src/modules/core-client/core-client.service.ts
-
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -47,7 +45,7 @@ export class CoreClientService implements OnModuleInit {
   private async sincronizarHospitales(): Promise<void> {
     try {
       const { data: hospitales } = await firstValueFrom(
-        this.httpService.get(`${this.coreUrl}/hospitales`, {
+        this.httpService.get(`${this.coreUrl}/sync/hospitales`, {
           headers: this.headers,
           timeout: 10000,
         }),
@@ -83,7 +81,7 @@ export class CoreClientService implements OnModuleInit {
   private async sincronizarEspecialidades(): Promise<void> {
     try {
       const { data: especialidades } = await firstValueFrom(
-        this.httpService.get(`${this.coreUrl}/especialidades`, {
+        this.httpService.get(`${this.coreUrl}/sync/especialidades`, {
           headers: this.headers,
           timeout: 10000,
         }),
@@ -115,7 +113,7 @@ export class CoreClientService implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get(`${this.coreUrl}/usuarios/${usuarioId}`, {
+        this.httpService.get(`${this.coreUrl}/sync/usuarios/${usuarioId}`, {
           headers: this.headers,
           timeout: 5000,
         }),
@@ -149,7 +147,7 @@ export class CoreClientService implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get(`${this.coreUrl}/pacientes/${pacienteId}`, {
+        this.httpService.get(`${this.coreUrl}/sync/pacientes/${pacienteId}`, {
           headers: this.headers,
           timeout: 5000,
         }),
@@ -177,6 +175,42 @@ export class CoreClientService implements OnModuleInit {
     }
   }
 
+  async buscarPacientePorDocumento(cedula: string): Promise<any> {
+    const local = await this.prisma.pacientes.findFirst({
+      where: { numero_documento: cedula },
+    });
+    if (local) return local;
+
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get(
+          `${this.coreUrl}/sync/pacientes/documento/${cedula}`,
+          { headers: this.headers, timeout: 5000 },
+        ),
+      );
+
+      await this.sincronizarUsuario(data.usuario_id);
+
+      return await this.prisma.pacientes.upsert({
+        where: { id: data.id },
+        update: {},
+        create: {
+          id: data.id,
+          usuario_id: data.usuario_id,
+          fecha_nacimiento: data.fecha_nacimiento ? new Date(data.fecha_nacimiento) : null,
+          tipo_sangre: data.tipo_sangre || null,
+          numero_documento: data.numero_documento || null,
+          tipo_documento: data.tipo_documento || 'CC',
+          eps: data.eps || null,
+          alergias: data.alergias || null,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Error buscando paciente por cédula ${cedula}: ${error?.message}`);
+      throw new Error(`No se pudo obtener paciente con cédula ${cedula} desde Core`);
+    }
+  }
+
   async sincronizarEnfermero(enfermeroId: string): Promise<any> {
     const local = await this.prisma.enfermeros.findUnique({
       where: { id: enfermeroId },
@@ -185,7 +219,7 @@ export class CoreClientService implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get(`${this.coreUrl}/enfermeros/${enfermeroId}`, {
+        this.httpService.get(`${this.coreUrl}/sync/enfermeros/${enfermeroId}`, {
           headers: this.headers,
           timeout: 5000,
         }),
@@ -230,7 +264,7 @@ export class CoreClientService implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get(`${this.coreUrl}/medicos/${medicoId}`, {
+        this.httpService.get(`${this.coreUrl}/sync/medicos/${medicoId}`, {
           headers: this.headers,
           timeout: 5000,
         }),

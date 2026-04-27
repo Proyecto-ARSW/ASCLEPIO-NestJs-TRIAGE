@@ -225,6 +225,8 @@ export class ConfirmacionService {
         nivel_triage: nivelTriage,
         tipo_alerta: tipoAlerta as any,
         creado_en: new Date(),
+        confirmada: true,
+        activa: false,
       },
     });
 
