@@ -32,14 +32,13 @@ export class RecepcionService {
  
     // 2. Generar número de turno
     const hoy = new Date();
+    const inicioDelDia = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()));
+    const finDelDia   = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() + 1));
     const ultimoTurno = await this.prisma.turnos.findFirst({
       where: {
         hospital_id: dto.hospital_id,
         tipo_turno: 'URGENCIA',
-        fecha: {
-          gte: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()),
-          lt: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1),
-        },
+        fecha: { gte: inicioDelDia, lt: finDelDia },
       },
       orderBy: { numero_turno: 'desc' },
       select: { numero_turno: true },

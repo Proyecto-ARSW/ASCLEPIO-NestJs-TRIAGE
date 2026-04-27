@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 export class ClassifierGatewayService {
   private readonly logger = new Logger(ClassifierGatewayService.name);
   private readonly classifierUrl: string;
+  private readonly classifierApiKey: string;
 
   constructor(
     private readonly httpService: HttpService,
@@ -13,7 +14,8 @@ export class ClassifierGatewayService {
   ) {
     this.classifierUrl =
       this.configService.get<string>('CLASSIFIER_SERVICE_URL') ||
-      'http://localhost:8087';
+      'http://localhost:8000';
+    this.classifierApiKey = this.configService.get<string>('CLASSIFIER_API_KEY');
   }
 
   async clasificar(payload: any): Promise<any> {
@@ -37,7 +39,10 @@ export class ClassifierGatewayService {
 
     const response = await this.httpService.axiosRef.post(url, mikePayload, {
       timeout: 5000,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.classifierApiKey && { 'x-api-key': this.classifierApiKey }), // ← NUEVO
+      },
     });
 
     const data = response.data;
