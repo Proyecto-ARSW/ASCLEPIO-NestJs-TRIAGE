@@ -7,6 +7,7 @@ import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 import { IngresoTriageDto } from '../dto/ingreso-triage.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { IngresoISISvoiceDto } from '../dto/ingreso-isisvoice.dto';
  
 @Injectable()
 export class RecepcionService {
@@ -258,6 +259,53 @@ export class RecepcionService {
       comentarios: 'Clasificación fallback (Random Forest no disponible)',
       probabilidades: null,
     };
+  }
+
+    async procesarIngresoISISvoice(
+    isisDto: IngresoISISvoiceDto,
+    hospitalId: number,
+    enfermeroId: string,
+  ) {
+    this.logger.log(
+      `Ingreso ISISvoice — Cedula: ${isisDto.patient_cedula}, Procedure: ${isisDto.procedure_id}`,
+    );
+
+    const paciente = await this.coreClient.buscarPacientePorDocumento(
+      isisDto.patient_cedula,
+    );
+
+    const dto: IngresoTriageDto = {
+      paciente_id: paciente.id,
+      hospital_id: hospitalId,
+      enfermero_id: enfermeroId,
+
+      motivo_consulta:
+        isisDto.transcript ||
+        isisDto.triage_data.comentario ||
+        'Sin descripción registrada',
+
+      sintomas: isisDto.triage_data.sintomas ?? [],
+      embarazo: isisDto.triage_data.embarazo ?? false,
+      antecedentes: isisDto.triage_data.antecedentes ?? [],
+      posibles_causas: isisDto.triage_data.posiblesCausas ?? [],
+      nivel_preliminar_isisvoice: isisDto.triage_data.nivelPrioridad ?? 3,
+      comentario_paciente: isisDto.triage_data.comentario,
+
+      presion_sistolica: isisDto.vital_signs.systolic_bp_mmhg,
+      presion_diastolica: isisDto.vital_signs.diastolic_bp_mmhg,
+      frecuencia_cardiaca: isisDto.vital_signs.heart_rate_bpm,
+      frecuencia_respiratoria: isisDto.vital_signs.respiratory_rate_bpm,
+      temperatura: isisDto.vital_signs.temperature_c,
+      saturacion_oxigeno: isisDto.vital_signs.oxygen_saturation_pct,
+      peso_kg: isisDto.vital_signs.weight_kg,
+      altura_cm: isisDto.vital_signs.height_cm,
+
+      observaciones_enfermero: isisDto.triage_data.comentariosIA
+        ? `IA: ${isisDto.triage_data.comentariosIA}`
+        : undefined,
+    };
+
+    return this.procesarIngreso(dto);
   }
 }
 
