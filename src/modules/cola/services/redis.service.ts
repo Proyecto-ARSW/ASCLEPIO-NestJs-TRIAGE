@@ -10,9 +10,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client: Redis | null = null;
   private subscriber: Redis | null = null;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
+    let client: Redis | null = null;
+    let subscriber: Redis | null = null;
+
     try {
       const useTls = this.configService.get<string>('redis.tls') === 'true';
 
@@ -36,34 +39,53 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log('Conectando a Redis...');
 
-      this.client = new Redis(redisConfig);
-      this.subscriber = new Redis(redisConfig);
+      client = new Redis(redisConfig);
+      subscriber = new Redis(redisConfig);
 
-      this.client.on('connect', () => {
+      client.on('connect', () => {
         this.logger.log('Redis client conectado');
       });
 
-      this.client.on('error', (error: any) => {
+      client.on('error', (error: any) => {
         this.logger.error(`Redis client error: ${error?.message || error}`);
       });
 
-      this.subscriber.on('connect', () => {
+      subscriber.on('connect', () => {
         this.logger.log('Redis subscriber conectado');
       });
 
-      this.subscriber.on('error', (error: any) => {
+      subscriber.on('error', (error: any) => {
         this.logger.error(`Redis subscriber error: ${error?.message || error}`);
       });
 
       // Intentar conectar
-      await this.client.connect();
-      await this.subscriber.connect();
+      await client.connect();
+      await subscriber.connect();
 
-      await this.client.ping();
+      await client.ping();
+
+      this.client = client;
+      this.subscriber = subscriber;
       this.logger.log('Redis listo');
     } catch (error: any) {
       this.logger.error(`Error conectando a Redis: ${error?.message || error}`);
       this.logger.warn('El servicio continuará sin Redis (funcionalidad limitada)')
+
+      if (client) {
+        try {
+          client.disconnect();
+        } catch {
+          // Ignorar errores de limpieza al fallar la conexión inicial.
+        }
+      }
+
+      if (subscriber) {
+        try {
+          subscriber.disconnect();
+        } catch {
+          // Ignorar errores de limpieza al fallar la conexión inicial.
+        }
+      }
     }
   }
 
@@ -130,7 +152,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     for (let i = 0; i < result.length; i += 2) {
       items.push({
         member: result[i],
-        score: parseFloat(result[i + 1]),
+        score: Number.parseFloat(result[i + 1]),
       });
     }
 

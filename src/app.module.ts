@@ -35,6 +35,7 @@ import { CoreClientModule } from './modules/core-client/core-client.module';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      envFilePath: process.env.NODE_ENV === 'production' ? ['.env.production', '.env'] : ['.env'],
       load: [appConfig, databaseConfig, redisConfig, rabbitmqConfig],
     }),
     GraphQLModule.forRoot<ApolloDriverConfig>({

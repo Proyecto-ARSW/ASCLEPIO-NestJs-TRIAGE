@@ -5,10 +5,10 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
   HealthCheckService,
   HealthCheck,
+  HealthIndicatorService,
   PrismaHealthIndicator,
   MemoryHealthIndicator,
   DiskHealthIndicator,
-  HealthCheckError,
   HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { parse } from 'node:path';
@@ -19,27 +19,36 @@ import { RedisService } from '../modules/cola/services/redis.service';
 @Controller('health')
 export class HealthController {
   constructor(
-    private health: HealthCheckService,
-    private prismaHealth: PrismaHealthIndicator,
-    private memory: MemoryHealthIndicator,
-    private disk: DiskHealthIndicator,
-    private prisma: PrismaService,
-    private redisService: RedisService,
+    private readonly health: HealthCheckService,
+    private readonly healthIndicatorService: HealthIndicatorService,
+    private readonly prismaHealth: PrismaHealthIndicator,
+    private readonly memory: MemoryHealthIndicator,
+    private readonly disk: DiskHealthIndicator,
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   private async checkRedis(): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check('redis');
+    const client = this.redisService.getClient();
+
+    if (!client) {
+      return indicator.down({ message: 'Cliente no inicializado' });
+    }
+
+    if (client.status !== 'ready') {
+      return indicator.down({ message: `Estado de conexión: ${client.status}` });
+    }
+
     try {
-      const client = this.redisService.getClient();
-      if (!client) {
-        throw new Error('Cliente no inicializado');
-      }
       const result = await client.ping();
-      if (result !== 'PONG') throw new Error('Respuesta inesperada');
-      return { redis: { status: 'up' } };
+      if (result !== 'PONG') {
+        return indicator.down({ message: 'Respuesta inesperada' });
+      }
+
+      return indicator.up();
     } catch (err: any) {
-      throw new HealthCheckError('redis', {
-        redis: { status: 'down', message: err?.message ?? 'Sin conexión' },
-      });
+      return indicator.down({ message: err?.message ?? 'Sin conexión' });
     }
   }
 
