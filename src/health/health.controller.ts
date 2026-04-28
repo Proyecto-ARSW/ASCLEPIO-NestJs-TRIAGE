@@ -5,50 +5,43 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
   HealthCheckService,
   HealthCheck,
-  HealthIndicatorService,
   PrismaHealthIndicator,
   MemoryHealthIndicator,
   DiskHealthIndicator,
+  HealthCheckError,
   HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { parse } from 'node:path';
 import { PrismaService } from '../modules/prisma/prisma.service';
 import { RedisService } from '../modules/cola/services/redis.service';
+import { RabbitMQHealthIndicator } from './rabbitmq.health';
 
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
   constructor(
-    private readonly health: HealthCheckService,
-    private readonly healthIndicatorService: HealthIndicatorService,
-    private readonly prismaHealth: PrismaHealthIndicator,
-    private readonly memory: MemoryHealthIndicator,
-    private readonly disk: DiskHealthIndicator,
-    private readonly prisma: PrismaService,
-    private readonly redisService: RedisService,
+    private health: HealthCheckService,
+    private prismaHealth: PrismaHealthIndicator,
+    private memory: MemoryHealthIndicator,
+    private disk: DiskHealthIndicator,
+    private prisma: PrismaService,
+    private redisService: RedisService,
+    private rabbitmq: RabbitMQHealthIndicator,
   ) {}
 
   private async checkRedis(): Promise<HealthIndicatorResult> {
-    const indicator = this.healthIndicatorService.check('redis');
-    const client = this.redisService.getClient();
-
-    if (!client) {
-      return indicator.down({ message: 'Cliente no inicializado' });
-    }
-
-    if (client.status !== 'ready') {
-      return indicator.down({ message: `Estado de conexión: ${client.status}` });
-    }
-
     try {
-      const result = await client.ping();
-      if (result !== 'PONG') {
-        return indicator.down({ message: 'Respuesta inesperada' });
+      const client = this.redisService.getClient();
+      if (!client) {
+        throw new Error('Cliente no inicializado');
       }
-
-      return indicator.up();
+      const result = await client.ping();
+      if (result !== 'PONG') throw new Error('Respuesta inesperada');
+      return { redis: { status: 'up' } };
     } catch (err: any) {
-      return indicator.down({ message: err?.message ?? 'Sin conexión' });
+      throw new HealthCheckError('redis', {
+        redis: { status: 'down', message: err?.message ?? 'Sin conexión' },
+      });
     }
   }
 
@@ -64,6 +57,7 @@ export class HealthController {
     return this.health.check([
       () => this.prismaHealth.pingCheck('database', this.prisma),
       () => this.checkRedis(),
+      () => this.rabbitmq.isHealthy('rabbitmq'),
       () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
       () => this.disk.checkStorage('disk', { path: parse(process.cwd()).root, thresholdPercent: 0.9 }),
     ]);
@@ -73,7 +67,7 @@ export class HealthController {
   @HealthCheck()
   @ApiOperation({
     summary: 'Readiness probe',
-    description: 'Verifica si el servicio está listo para recibir tráfico (BD + Redis).',
+    description: 'Verifica si el servicio está listo para recibir tráfico (BD + Redis + RabbitMQ).',
   })
   @ApiResponse({ status: 200, description: 'Servicio listo.' })
   @ApiResponse({ status: 503, description: 'Servicio no listo.' })
@@ -81,6 +75,7 @@ export class HealthController {
     return this.health.check([
       () => this.prismaHealth.pingCheck('database', this.prisma),
       () => this.checkRedis(),
+      () => this.rabbitmq.isHealthy('rabbitmq'),
     ]);
   }
 
