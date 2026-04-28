@@ -14,7 +14,7 @@ export class ClassifierGatewayService {
   ) {
     this.classifierUrl =
       this.configService.get<string>('CLASSIFIER_SERVICE_URL') ||
-      'http://localhost:8000';
+      'http://172.168.108.215:8000';
     this.classifierApiKey = this.configService.get<string>('CLASSIFIER_API_KEY');
   }
 
