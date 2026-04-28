@@ -91,8 +91,8 @@ export class AlertaController {
   }
 
   @Get('hospital/:hospital_id')
-  @Roles('MEDICO', 'JEFE_GUARDIA', 'ADMIN')
-  @ApiOperation({ summary: 'Obtener alertas activas del hospital', description: 'Retorna alertas críticas y de tiempo de espera activas. Roles: MEDICO, JEFE_GUARDIA, ADMIN.' })
+  @Roles('MEDICO', 'JEFE_GUARDIA', 'ADMIN', 'ENFERMERO')
+  @ApiOperation({ summary: 'Obtener alertas activas del hospital', description: 'Retorna alertas críticas y de tiempo de espera activas. Roles: MEDICO, JEFE_GUARDIA, ADMIN, ENFERMERO.' })
   @ApiParam({ name: 'hospital_id', description: 'ID del hospital', example: '1' })
   @ApiResponse({ status: 200, description: 'Alertas activas del hospital.' })
   async obtenerAlertasHospital(@Param('hospital_id') hospitalId: string) {

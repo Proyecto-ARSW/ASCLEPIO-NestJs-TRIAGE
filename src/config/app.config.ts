@@ -10,8 +10,8 @@ export default registerAs('app', () => ({
   useApiGateway: process.env.USE_API_GATEWAY === 'true',
   apiGatewayUrl: process.env.API_GATEWAY_URL || 'http://localhost',
 
-  ollamaPrelimUrl: process.env.OLLAMA_PRELIM_URL || 'http://localhost:3002',
-  triageClassifierUrl: process.env.TRIAGE_CLASSIFIER_URL || 'http://localhost:3003',
+  ollamaPrelimUrl: process.env.OLLAMA_PRELIM_URL || 'http://localhost:8002',
+  triageClassifierUrl: process.env.TRIAGE_CLASSIFIER_URL || 'http://localhost:8000',
   coreApiUrl: process.env.CORE_API_URL || 'http://localhost:3000',
 
   jwtSecret: process.env.JWT_SECRET,

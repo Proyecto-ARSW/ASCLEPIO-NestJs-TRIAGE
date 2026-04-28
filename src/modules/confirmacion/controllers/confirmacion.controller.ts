@@ -1,6 +1,6 @@
 // src/modules/confirmacion/confirmacion.controller.ts
 
-import { Controller, Post, Get, Param, Body, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ConfirmacionService } from '../services/confirmacion.service';
 import { ConfirmarTriageDto } from '../dto/confirmar-triage.dto';
@@ -36,7 +36,7 @@ export class ConfirmacionController {
   @ApiResponse({ status: 200, description: 'Lista de confirmaciones del enfermero.' })
   async obtenerConfirmacionesPorEnfermero(
     @Param('enfermero_id') enfermero_id: string,
-    @Query('limit', ParseIntPipe) limit: number = 50
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number
   ) {
     return this.confirmacionService.obtenerConfirmacionesPorEnfermero(enfermero_id, limit);
   }
