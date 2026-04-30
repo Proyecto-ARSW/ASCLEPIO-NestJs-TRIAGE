@@ -92,17 +92,37 @@ export class AlertaController {
 
   @Get('hospital/:hospital_id')
   @Roles('MEDICO', 'JEFE_GUARDIA', 'ADMIN', 'ENFERMERO')
-  @ApiOperation({ summary: 'Obtener alertas activas del hospital', description: 'Retorna alertas críticas y de tiempo de espera activas. Roles: MEDICO, JEFE_GUARDIA, ADMIN, ENFERMERO.' })
+  @ApiOperation({ summary: 'Obtener alertas activas del hospital', description: 'Retorna alertas críticas y de tiempo de espera activas. Roles: MEDICO, JEFE_GUARDIA, ADMIN.' })
   @ApiParam({ name: 'hospital_id', description: 'ID del hospital', example: '1' })
   @ApiResponse({ status: 200, description: 'Alertas activas del hospital.' })
   async obtenerAlertasHospital(@Param('hospital_id') hospitalId: string) {
-    const alertasCriticas = await this.alertaCriticaService.obtenerAlertasActivas(parseInt(hospitalId));
-    const alertasTiempoEspera = await this.alertaTriageService.obtenerAlertasActivas(parseInt(hospitalId));
+    const [alertasCriticas, alertasTiempoEspera] = await Promise.all([
+      this.alertaCriticaService.obtenerAlertasActivas(parseInt(hospitalId)),
+      this.alertaTriageService.obtenerAlertasActivas(parseInt(hospitalId)),
+    ]);
+
+    const todasAlertas = [...alertasCriticas, ...alertasTiempoEspera];
+    const usuarioIds = [...new Set(
+      todasAlertas.map((a: any) => a.turno?.pacientes?.usuario_id).filter(Boolean),
+    )] as string[];
+
+    const usuarios = usuarioIds.length
+      ? await this.alertaCriticaService.buscarUsuarios(usuarioIds)
+      : [];
+    const usuarioMap = new Map(usuarios.map((u: any) => [u.id, u]));
+
+    const enriquecer = (alertas: any[]) =>
+      alertas.map((a) => {
+        const uid = a.turno?.pacientes?.usuario_id;
+        const u = uid ? usuarioMap.get(uid) : null;
+        return { ...a, paciente_nombre: u ? `${u.nombre} ${u.apellido}` : null };
+      });
+
     return {
       success: true,
       data: {
-        alertas_criticas: alertasCriticas,
-        alertas_tiempo_espera: alertasTiempoEspera,
+        alertas_criticas: enriquecer(alertasCriticas),
+        alertas_tiempo_espera: enriquecer(alertasTiempoEspera),
         total_criticas: alertasCriticas.length,
         total_tiempo_espera: alertasTiempoEspera.length,
       },

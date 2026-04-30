@@ -289,4 +289,25 @@ export class CoreClientService implements OnModuleInit {
       throw new Error(`No se pudo obtener médico de Core: ${medicoId}`);
     }
   }
+
+    async resolverMedicoIdPorUsuario(usuarioId: string): Promise<string> {
+    const local = await this.prisma.medicos.findFirst({
+      where: { usuario_id: usuarioId },
+      select: { id: true },
+    });
+    if (local) return local.id;
+
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get(
+          `${this.coreUrl}/sync/medicos/usuario/${usuarioId}`,
+          { headers: this.headers, timeout: 5000 },
+        ),
+      );
+      const medico = await this.sincronizarMedico(data.id);
+      return medico.id;
+    } catch (error: any) {
+      throw new Error(`No se pudo resolver médico para usuario ${usuarioId}: ${error?.message}`);
+    }
+  }
 }

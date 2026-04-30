@@ -29,6 +29,14 @@ export class ConfirmacionController {
     return this.confirmacionService.obtenerConfirmacion(id);
   }
 
+  @Get('hospital/:hospital_id/resumen')
+  @ApiOperation({ summary: 'Resumen de confirmaciones del hospital hoy' })
+  @ApiParam({ name: 'hospital_id', description: 'ID del hospital', example: '1' })
+  @ApiResponse({ status: 200, description: 'Pendientes y confirmadas hoy.' })
+  async resumenHospital(@Param('hospital_id', ParseIntPipe) hospitalId: number) {
+    return this.confirmacionService.resumenPorHospital(hospitalId);
+  }
+
   @Get('enfermero/:enfermero_id')
   @ApiOperation({ summary: 'Obtener confirmaciones por enfermero', description: 'Retorna el historial de confirmaciones realizadas por un enfermero.' })
   @ApiParam({ name: 'enfermero_id', description: 'ID UUID del enfermero', example: 'b2c3d4e5-f6a7-8901-bcde-f12345678901' })

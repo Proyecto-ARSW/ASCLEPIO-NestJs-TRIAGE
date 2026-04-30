@@ -159,7 +159,18 @@ export class TurnoService {
       orderBy: [{ nivel_triage_id: 'asc' }, { creado_en: 'asc' }],
     });
 
-    return turnos as unknown as Turno[];
+    const usuarioIds = [...new Set(turnos.map((t) => t.pacientes?.usuario_id).filter(Boolean))] as string[];
+    const usuarios = usuarioIds.length
+      ? await this.prisma.usuarios.findMany({ where: { id: { in: usuarioIds } }, select: { id: true, nombre: true, apellido: true } })
+      : [];
+    const usuarioMap = new Map(usuarios.map((u) => [u.id, u]));
+
+    const enriquecidos = turnos.map((t) => {
+      const u = t.pacientes?.usuario_id ? usuarioMap.get(t.pacientes.usuario_id) : null;
+      return { ...t, paciente_nombre: u ? `${u.nombre} ${u.apellido}` : null };
+    });
+
+    return enriquecidos as unknown as Turno[];
   }
 
   async actualizarEstado(id: string, dto: ActualizarEstadoTurnoDto): Promise<Turno> {
@@ -275,12 +286,30 @@ export class TurnoService {
     const tiempoAtencionMs = Date.now() - (turno.llamado_en || new Date()).getTime();
     const tiempoAtencionMin = Math.floor(tiempoAtencionMs / 60000);
 
+    const medicoId = await this.coreClient.resolverMedicoIdPorUsuario(dto.medico_id);
+
     const turnoActualizado = await this.prisma.turnos.update({
       where: { id },
       data: {
         estado: EstadoTurno.ATENDIDO,
         atendido_en: turno.llamado_en || new Date(),
         finalizado_en: new Date(),
+      },
+    });
+
+    await this.prisma.consultas_urgencia.create({
+      data: {
+        turno_id: turno.id,
+        registro_triage_id: turno.registro_triage_id ?? null,
+        paciente_id: turno.paciente_id,
+        medico_id: medicoId,
+        hospital_id: turno.hospital_id,
+        diagnostico: dto.diagnostico,
+        tratamiento: dto.tratamiento,
+        observaciones: dto.observaciones ?? null,
+        nivel_triage: turno.nivel_triage_id ?? null,
+        tiempo_espera_minutos: tiempoEsperaMin,
+        tiempo_atencion_minutos: tiempoAtencionMin,
       },
     });
 
