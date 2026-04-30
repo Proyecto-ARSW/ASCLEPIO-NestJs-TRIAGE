@@ -91,7 +91,7 @@ export class DashboardMedicoService {
     const turnosEnEspera = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
-        estado: EstadoTurno.EN_ESPERA,
+        estado: { in: [EstadoTurno.EN_ESPERA, EstadoTurno.EN_CONSULTA] },
         fecha: { gte: fecha },
       },
       include: {
