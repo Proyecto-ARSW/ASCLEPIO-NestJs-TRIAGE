@@ -15,17 +15,14 @@ export class DashboardPacienteService {
     private readonly colaService: ColaService,
   ) {}
 
-  /**
-   * Obtiene el dashboard del paciente
-   */
   async obtenerDashboard(turnoId: string): Promise<DashboardPaciente> {
     this.logger.debug(`Dashboard paciente - Turno: ${turnoId}`);
 
     const turno = await this.prisma.turnos.findUnique({
       where: { id: turnoId },
       include: {
-        pacientes: true,  
-        nivel_triage: true, 
+        pacientes: true,
+        nivel_triage: true,
       },
     });
 
@@ -40,7 +37,6 @@ export class DashboardPacienteService {
       });
     }
 
-    // Obtener médico asignado si existe
     let medicoData = null;
     let medicoUsuario = null;
     if (turno.medico_id) {
@@ -69,20 +65,26 @@ export class DashboardPacienteService {
     let totalCola = 0;
 
     if (turno.estado === EstadoTurno.EN_ESPERA && turno.nivel_triage_id) {
-      const posicion = await this.colaService.obtenerPosicionEnCola(
-        turnoId,
-        turno.hospital_id,
-        turno.nivel_triage_id,
-      );
+      // Count only active EN_ESPERA turns from DB — Redis may have stale data
+      totalCola = await this.prisma.turnos.count({
+        where: {
+          hospital_id: turno.hospital_id,
+          nivel_triage_id: turno.nivel_triage_id,
+          estado: EstadoTurno.EN_ESPERA,
+        },
+      });
 
-      posicionCola = posicion !== null ? posicion + 1 : 0;
+      // Position = how many EN_ESPERA turns of same nivel were created before this one
+      const delante = await this.prisma.turnos.count({
+        where: {
+          hospital_id: turno.hospital_id,
+          nivel_triage_id: turno.nivel_triage_id,
+          estado: EstadoTurno.EN_ESPERA,
+          creado_en: { lt: turno.creado_en },
+        },
+      });
 
-      const colaCompleta = await this.colaService.obtenerColaPorNivel(
-        turno.hospital_id,
-        turno.nivel_triage_id,
-      );
-
-      totalCola = colaCompleta.total;
+      posicionCola = delante + 1;
     }
 
     const pacientesDelante = await this.contarPacientesDelantePorNivel(
@@ -119,9 +121,6 @@ export class DashboardPacienteService {
     };
   }
 
-  /**
-   * Obtiene posición actual en cola
-   */
   async obtenerPosicion(turnoId: string): Promise<{ posicion: number; total: number }> {
     const turno = await this.prisma.turnos.findUnique({
       where: { id: turnoId },
@@ -131,26 +130,33 @@ export class DashboardPacienteService {
       return { posicion: 0, total: 0 };
     }
 
-    const posicion = await this.colaService.obtenerPosicionEnCola(
-      turnoId,
-      turno.hospital_id,
-      turno.nivel_triage_id,
-    );
+    if (turno.estado !== EstadoTurno.EN_ESPERA) {
+      return { posicion: 0, total: 0 };
+    }
 
-    const colaCompleta = await this.colaService.obtenerColaPorNivel(
-      turno.hospital_id,
-      turno.nivel_triage_id,
-    );
+    const total = await this.prisma.turnos.count({
+      where: {
+        hospital_id: turno.hospital_id,
+        nivel_triage_id: turno.nivel_triage_id,
+        estado: EstadoTurno.EN_ESPERA,
+      },
+    });
+
+    const delante = await this.prisma.turnos.count({
+      where: {
+        hospital_id: turno.hospital_id,
+        nivel_triage_id: turno.nivel_triage_id,
+        estado: EstadoTurno.EN_ESPERA,
+        creado_en: { lt: turno.creado_en },
+      },
+    });
 
     return {
-      posicion: posicion !== null ? posicion + 1 : 0,
-      total: colaCompleta.total,
+      posicion: delante + 1,
+      total,
     };
   }
 
-  /**
-   * Cuenta pacientes delante por nivel
-   */
   private async contarPacientesDelantePorNivel(
     hospitalId: number,
     nivelActual: number,
@@ -159,19 +165,22 @@ export class DashboardPacienteService {
     const counts = { nivel_1: 0, nivel_2: 0, nivel_3: 0 };
 
     for (let nivel = 1; nivel < nivelActual; nivel++) {
-      const cola = await this.colaService.obtenerColaPorNivel(hospitalId, nivel);
+      const count = await this.prisma.turnos.count({
+        where: {
+          hospital_id: hospitalId,
+          nivel_triage_id: nivel,
+          estado: EstadoTurno.EN_ESPERA,
+        },
+      });
 
-      if (nivel === 1) counts.nivel_1 = cola.total;
-      if (nivel === 2) counts.nivel_2 = cola.total;
-      if (nivel === 3) counts.nivel_3 = cola.total;
+      if (nivel === 1) counts.nivel_1 = count;
+      if (nivel === 2) counts.nivel_2 = count;
+      if (nivel === 3) counts.nivel_3 = count;
     }
 
     return counts;
   }
 
-  /**
-   * Calcula tiempo estimado de espera
-   */
   private calcularTiempoEstimado(nivel: number, posicion: number): number {
     const tiemposAtencion: Record<number, number> = {
       1: 25,
@@ -185,9 +194,6 @@ export class DashboardPacienteService {
     return posicion * tiempoPorPaciente;
   }
 
-  /**
-   * Construye historial de pasos del turno
-   */
   private async construirHistorial(turno: any, medicoData: any) {
     const historial: Array<{ paso: string; timestamp: Date; completado: boolean }> = [];
 
