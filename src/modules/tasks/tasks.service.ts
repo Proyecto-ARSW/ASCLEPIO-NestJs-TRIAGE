@@ -18,17 +18,11 @@ export class TasksService {
     private readonly triageGateway: TriageGateway,
   ) {}
 
-  /**
-   * Cron job: Ejecuta cada minuto
-   * Escala alertas críticas no confirmadas después de 3 minutos
-   */
   @Cron(CronExpression.EVERY_MINUTE)
   async procesarEscalamientoAutomatico() {
     this.logger.debug('Cron: Verificando alertas para escalamiento...');
-
     try {
       const escaladas = await this.escalamientoService.procesarEscalamientoAutomatico();
-
       if (escaladas > 0) {
         this.logger.warn(`Cron: ${escaladas} alerta(s) escalada(s) automáticamente`);
       }
@@ -38,26 +32,47 @@ export class TasksService {
   }
 
   /**
-   * Cron job: Ejecuta cada 5 minutos
-   * Verifica si algún paciente EN_ESPERA excedió el tiempo máximo de su nivel de triage
+   * Cron job: Ejecuta cada minuto
+   * Expira alertas con más de 5 minutos de vida (TTL)
    */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async expirarAlertasAntiguas() {
+    this.logger.debug('Cron: Expirando alertas con TTL de 5 minutos...');
+    const ttl = new Date(Date.now() - 5 * 60 * 1000);
+    try {
+      const [criticas, espera] = await Promise.all([
+        this.prisma.alertas_criticas.updateMany({
+          where: { activa: true, creado_en: { lte: ttl } },
+          data: { activa: false },
+        }),
+        this.prisma.alertas_triage.updateMany({
+          where: { resuelta: false, creado_en: { lte: ttl } },
+          data: { resuelta: true, resuelta_en: new Date() },
+        }),
+      ]);
+      if (criticas.count > 0 || espera.count > 0) {
+        this.logger.log(
+          `TTL expiradas: ${criticas.count} alerta(s) crítica(s), ${espera.count} alerta(s) de espera`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(`Cron: Error expirando alertas: ${error?.message || error}`);
+    }
+  }
+
   @Cron(CronExpression.EVERY_5_MINUTES)
   async verificarTiemposEspera() {
     this.logger.debug('Cron: Verificando tiempos de espera...');
-
     try {
       const hospitales = await this.prisma.hospitales.findMany({
         where: { activo: true },
         select: { id: true, nombre: true },
       });
-
       let totalAlertas = 0;
-
       for (const hospital of hospitales) {
         const alertasCreadas = await this.verificarTiemposHospital(hospital.id);
         totalAlertas += alertasCreadas;
       }
-
       if (totalAlertas > 0) {
         this.logger.warn(`Cron: ${totalAlertas} alerta(s) de tiempo excedido creadas`);
       }
@@ -66,11 +81,7 @@ export class TasksService {
     }
   }
 
-  /**
-   * Verifica tiempos de espera excedidos para un hospital específico
-   */
   private async verificarTiemposHospital(hospitalId: number): Promise<number> {
-    // Obtener turnos EN_ESPERA con nivel de triage asignado
     const turnosEnEspera = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
@@ -117,47 +128,35 @@ export class TasksService {
             pacienteNombre = `${usuario.nombre} ${usuario.apellido}`;
           }
         }
-        this.triageGateway.emitToDashboardMedicos(
-          hospitalId,
-          'alerta:tiempo-excedido',
-          {
-            turno_id: turno.id,
-            numero_turno: turno.numero_turno,
-            paciente_nombre: pacienteNombre,
-            nivel_triage: turno.nivel_triage_id,
-            nombre_nivel: turno.nivel_triage.nombre,
-            color: turno.nivel_triage.color_codigo,
-            tiempo_espera_min: tiempoEsperaMin,
-            tiempo_max_min: tiempoMaximo,
-            tiempo_excedido_min: tiempoExcedido,
-            timestamp: new Date().toISOString(),
-          },
-        );
-
-        this.triageGateway.emitToDashboardEnfermeros(
-          hospitalId,
-          'alerta:tiempo-excedido',
-          {
-            turno_id: turno.id,
-            numero_turno: turno.numero_turno,
-            paciente_nombre: pacienteNombre,
-            nivel_triage: turno.nivel_triage_id,
-            nombre_nivel: turno.nivel_triage.nombre,
-            tiempo_espera_min: tiempoEsperaMin,
-            tiempo_excedido_min: tiempoExcedido,
-            timestamp: new Date().toISOString(),
-          },
-        );
-
+        this.triageGateway.emitToDashboardMedicos(hospitalId, 'alerta:tiempo-excedido', {
+          turno_id: turno.id,
+          numero_turno: turno.numero_turno,
+          paciente_nombre: pacienteNombre,
+          nivel_triage: turno.nivel_triage_id,
+          nombre_nivel: turno.nivel_triage.nombre,
+          color: turno.nivel_triage.color_codigo,
+          tiempo_espera_min: tiempoEsperaMin,
+          tiempo_max_min: tiempoMaximo,
+          tiempo_excedido_min: tiempoExcedido,
+          timestamp: new Date().toISOString(),
+        });
+        this.triageGateway.emitToDashboardEnfermeros(hospitalId, 'alerta:tiempo-excedido', {
+          turno_id: turno.id,
+          numero_turno: turno.numero_turno,
+          paciente_nombre: pacienteNombre,
+          nivel_triage: turno.nivel_triage_id,
+          nombre_nivel: turno.nivel_triage.nombre,
+          tiempo_espera_min: tiempoEsperaMin,
+          tiempo_excedido_min: tiempoExcedido,
+          timestamp: new Date().toISOString(),
+        });
         this.logger.warn(
           `Tiempo excedido - Turno: ${turno.numero_turno}, Nivel: ${turno.nivel_triage.nombre}, ` +
           `Espera: ${tiempoEsperaMin}min (máx: ${tiempoMaximo}min, excedido: ${tiempoExcedido}min)`,
         );
-
         alertasCreadas++;
       }
     }
-
     return alertasCreadas;
   }
 }
