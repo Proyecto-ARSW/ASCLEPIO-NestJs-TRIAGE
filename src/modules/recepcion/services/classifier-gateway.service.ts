@@ -33,6 +33,8 @@ export class ClassifierGatewayService {
           oxygen_saturation_pct: payload.saturacion_oxigeno,
           systolic_bp_mmhg: payload.presion_sistolica,
           diastolic_bp_mmhg: payload.presion_diastolica,
+          weight_kg: payload.peso_kg ?? null,
+          height_cm: payload.altura_cm ?? null,
         },
       },
     };
