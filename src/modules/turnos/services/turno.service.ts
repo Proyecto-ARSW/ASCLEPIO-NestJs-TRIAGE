@@ -157,7 +157,19 @@ export class TurnoService {
       include: {
         pacientes: true,
         nivel_triage: true,
-        registro_triage: true,
+        registro_triage: {
+          include: {
+            confirmaciones: {
+              orderBy: { creado_en: 'desc' as const },
+              take: 1,
+              select: {
+                acepto_sugerencia: true,
+                nivel_final_enfermero: true,
+                razon_modificacion: true,
+              },
+            },
+          },
+        },
       },
       orderBy: [{ nivel_triage_id: 'asc' }, { creado_en: 'asc' }],
     });
