@@ -11,9 +11,6 @@ export class DashboardMedicoService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Obtiene el dashboard del médico
-   */
   async obtenerDashboard(
     hospitalId: number,
     medicoId?: string,
@@ -32,9 +29,9 @@ export class DashboardMedicoService {
         confirmada: false,
       },
       include: {
-        turno: {  
+        turno: {
           include: {
-            pacientes: true,  
+            pacientes: true,
             nivel_triage: true,
           },
         },
@@ -44,14 +41,12 @@ export class DashboardMedicoService {
       },
     });
 
-    // Agregar usuarios a las alertas
     const alertasConUsuarios = await Promise.all(
       alertasPendientes.map(async (alerta) => {
         if (alerta.turno?.pacientes) {
           const usuario = await this.prisma.usuarios.findUnique({
             where: { id: alerta.turno.pacientes.usuario_id },
           });
-
           return {
             ...alerta,
             turno: {
@@ -84,34 +79,41 @@ export class DashboardMedicoService {
     };
   }
 
-  /**
-   * Obtiene turnos organizados por nivel
-   */
   private async obtenerTurnosPorNivel(hospitalId: number, fecha: Date) {
-    const turnosEnEspera = await this.prisma.turnos.findMany({
+    const turnosActivos = await this.prisma.turnos.findMany({
       where: {
         hospital_id: hospitalId,
         estado: { in: [EstadoTurno.EN_ESPERA, EstadoTurno.EN_CONSULTA] },
         fecha: { gte: fecha },
       },
       include: {
-        pacientes: true, 
+        pacientes: true,
         nivel_triage: true,
-        registro_triage: true,
+        registro_triage: {
+          include: {
+            confirmaciones: {
+              orderBy: { creado_en: 'desc' as const },
+              take: 1,
+              select: {
+                acepto_sugerencia: true,
+                nivel_final_enfermero: true,
+                razon_modificacion: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         creado_en: 'asc',
       },
     });
 
-    // Agregar usuarios a los turnos
     const turnosConUsuarios = await Promise.all(
-      turnosEnEspera.map(async (turno) => {
+      turnosActivos.map(async (turno) => {
         if (turno.pacientes) {
           const usuario = await this.prisma.usuarios.findUnique({
             where: { id: turno.pacientes.usuario_id },
           });
-
           return {
             ...turno,
             pacientes: {
@@ -133,9 +135,6 @@ export class DashboardMedicoService {
     };
   }
 
-  /**
-   * Calcula métricas personales del médico
-   */
   private async calcularMetricasPersonales(medicoId: string, fecha: Date) {
     const atendidosHoy = await this.prisma.turnos.count({
       where: {
@@ -163,13 +162,11 @@ export class DashboardMedicoService {
     });
 
     let tiempoPromedioAtencion = 0;
-
     if (turnosFinalizados.length > 0) {
       const sumaTiempos = turnosFinalizados.reduce((sum, turno) => {
         const tiempo = turno.finalizado_en.getTime() - turno.llamado_en.getTime();
         return sum + tiempo;
       }, 0);
-
       tiempoPromedioAtencion = Math.floor(sumaTiempos / turnosFinalizados.length / 60000);
     }
 

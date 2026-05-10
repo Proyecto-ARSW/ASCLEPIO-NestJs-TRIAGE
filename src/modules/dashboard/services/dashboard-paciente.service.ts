@@ -30,13 +30,6 @@ export class DashboardPacienteService {
       throw new NotFoundException('Turno no encontrado');
     }
 
-    let pacienteUsuario = null;
-    if (turno.pacientes) {
-      pacienteUsuario = await this.prisma.usuarios.findUnique({
-        where: { id: turno.pacientes.usuario_id },
-      });
-    }
-
     let medicoData = null;
     let medicoUsuario = null;
     if (turno.medico_id) {
@@ -60,7 +53,6 @@ export class DashboardPacienteService {
     const tiempoEsperaMs = new Date().getTime() - turno.creado_en.getTime();
     const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
 
-    // Solo se consideran turnos del día actual en estado EN_ESPERA
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -68,22 +60,27 @@ export class DashboardPacienteService {
     let totalCola = 0;
 
     if (turno.estado === EstadoTurno.EN_ESPERA && turno.nivel_triage_id) {
-      // Pacientes del mismo nivel que llegaron antes (hoy, EN_ESPERA)
+      // Pacientes delante: mayor prioridad (nivel menor) + mismo nivel llegados antes
       const turnosDelante = await this.prisma.turnos.count({
         where: {
           hospital_id: turno.hospital_id,
-          nivel_triage_id: turno.nivel_triage_id,
           estado: EstadoTurno.EN_ESPERA,
-          creado_en: { gte: startOfDay, lt: turno.creado_en },
+          creado_en: { gte: startOfDay },
           id: { not: turnoId },
+          OR: [
+            { nivel_triage_id: { lt: turno.nivel_triage_id } },
+            {
+              nivel_triage_id: turno.nivel_triage_id,
+              creado_en: { lt: turno.creado_en },
+            },
+          ],
         },
       });
 
-      // Total en cola del mismo nivel hoy
+      // Total real: todos los EN_ESPERA del hospital hoy
       totalCola = await this.prisma.turnos.count({
         where: {
           hospital_id: turno.hospital_id,
-          nivel_triage_id: turno.nivel_triage_id,
           estado: EstadoTurno.EN_ESPERA,
           creado_en: { gte: startOfDay },
         },
@@ -103,6 +100,7 @@ export class DashboardPacienteService {
       turno.nivel_triage_id || 5,
       posicionCola,
       nivelTriageData?.tiempo_max_espera_min,
+      tiempoEsperaMin,
     );
 
     const historial = await this.construirHistorial(turno, medicoData);
@@ -143,17 +141,22 @@ export class DashboardPacienteService {
     const turnosDelante = await this.prisma.turnos.count({
       where: {
         hospital_id: turno.hospital_id,
-        nivel_triage_id: turno.nivel_triage_id,
         estado: EstadoTurno.EN_ESPERA,
-        creado_en: { gte: startOfDay, lt: turno.creado_en },
+        creado_en: { gte: startOfDay },
         id: { not: turnoId },
+        OR: [
+          { nivel_triage_id: { lt: turno.nivel_triage_id } },
+          {
+            nivel_triage_id: turno.nivel_triage_id,
+            creado_en: { lt: turno.creado_en },
+          },
+        ],
       },
     });
 
     const total = await this.prisma.turnos.count({
       where: {
         hospital_id: turno.hospital_id,
-        nivel_triage_id: turno.nivel_triage_id,
         estado: EstadoTurno.EN_ESPERA,
         creado_en: { gte: startOfDay },
       },
@@ -165,10 +168,6 @@ export class DashboardPacienteService {
     };
   }
 
-  /**
-   * Cuenta pacientes en niveles de mayor prioridad que aún están
-   * EN_ESPERA hoy. Solo se muestran N1, N2 y N3 en el UI.
-   */
   private async contarPacientesDelantePorNivel(
     hospitalId: number,
     nivelActual: number,
@@ -186,7 +185,6 @@ export class DashboardPacienteService {
           creado_en: { gte: startOfDay },
         },
       });
-
       if (nivel === 1) counts.nivel_1 = count;
       if (nivel === 2) counts.nivel_2 = count;
       if (nivel === 3) counts.nivel_3 = count;
@@ -195,41 +193,20 @@ export class DashboardPacienteService {
     return counts;
   }
 
-  /**
-   * Calcula el tiempo estimado de espera.
-   *
-   * Tiempo base = SLA del nivel (tiempo_max_espera_min de BD):
-   *   N1=0min, N2=15min, N3=60min, N4=120min, N5=240min
-   *
-   * Por cada paciente del mismo nivel adelante en cola, se suma
-   * el tiempo promedio de atención de ese nivel.
-   */
   private calcularTiempoEstimado(
     nivel: number,
     posicion: number,
     tiempoMaxEsperaDB?: number,
+    tiempoTranscurridoMin?: number,
   ): number {
-    const slaDefecto: Record<number, number> = {
-      1: 0,
-      2: 15,
-      3: 60,
-      4: 120,
-      5: 240,
-    };
-
-    const tiempoConsulta: Record<number, number> = {
-      1: 10,
-      2: 12,
-      3: 15,
-      4: 20,
-      5: 25,
-    };
-
+    const slaDefecto: Record<number, number> = { 1: 0, 2: 15, 3: 60, 4: 120, 5: 240 };
+    const tiempoConsulta: Record<number, number> = { 1: 10, 2: 12, 3: 15, 4: 20, 5: 25 };
     const tiempoBase = tiempoMaxEsperaDB ?? slaDefecto[nivel] ?? 60;
     const tiempoPorPaciente = tiempoConsulta[nivel] ?? 15;
     const pacientesDelante = Math.max(0, posicion - 1);
-
-    return tiempoBase + pacientesDelante * tiempoPorPaciente;
+    const tiempoTotal = tiempoBase + pacientesDelante * tiempoPorPaciente;
+    // Descontar el tiempo ya transcurrido para que no se reinicie al recargar
+    return Math.max(0, tiempoTotal - (tiempoTranscurridoMin ?? 0));
   }
 
   private async construirHistorial(turno: any, medicoData: any) {
