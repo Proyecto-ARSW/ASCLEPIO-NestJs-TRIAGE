@@ -296,15 +296,10 @@ export class TurnoService {
       );
     }
 
-    const tiempoEsperaMs =
-      (turno.llamado_en || new Date()).getTime() - turno.creado_en.getTime();
+    const tiempoEsperaMs = (turno.llamado_en || new Date()).getTime() - turno.creado_en.getTime();
     const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
-
-    const tiempoAtencionMs =
-      Date.now() - (turno.llamado_en || new Date()).getTime();
+    const tiempoAtencionMs = Date.now() - (turno.llamado_en || new Date()).getTime();
     const tiempoAtencionMin = Math.floor(tiempoAtencionMs / 60000);
-
-    const medicoId = await this.coreClient.resolverMedicoIdPorUsuario(dto.medico_id);
 
     const turnoActualizado = await this.prisma.turnos.update({
       where: { id },
@@ -315,51 +310,33 @@ export class TurnoService {
       },
     });
 
-    await this.prisma.consultas_urgencia.create({
-      data: {
-        turno_id: turno.id,
-        registro_triage_id: turno.registro_triage_id ?? null,
-        paciente_id: turno.paciente_id,
-        medico_id: medicoId,
-        hospital_id: turno.hospital_id,
-        diagnostico: dto.diagnostico,
-        tratamiento: dto.tratamiento,
-        observaciones: dto.observaciones ?? null,
-        nivel_triage: turno.nivel_triage_id ?? null,
-        tiempo_espera_minutos: tiempoEsperaMin,
-        tiempo_atencion_minutos: tiempoAtencionMin,
-      },
-    });
-
-    await this.eventPublisher.publishPacienteAtendido({
-      turno_id: turno.id,
-      numero_turno: turno.numero_turno,
-      hospital_id: turno.hospital_id,
-      paciente_id: turno.paciente_id,
-      medico_id: dto.medico_id,
-      nivel_triage: turno.nivel_triage_id || 0,
-      tiempo_espera_minutos: tiempoEsperaMin,
-      tiempo_atencion_minutos: tiempoAtencionMin,
-      diagnostico: dto.diagnostico,
-      tratamiento: dto.tratamiento,
-      observaciones: dto.observaciones,
-    });
-
-    await this.coreNotifier.notificarPacienteAtendido({
-      turno_id: turno.id,
-      numero_turno: turno.numero_turno,
-      hospital_id: turno.hospital_id,
-      paciente_id: turno.paciente_id,
-      medico_id: dto.medico_id,
-      nivel_triage: turno.nivel_triage_id || 0,
-      tiempo_espera_minutos: tiempoEsperaMin,
-      tiempo_atencion_minutos: tiempoAtencionMin,
-      diagnostico: dto.diagnostico,
-      tratamiento: dto.tratamiento,
-      observaciones: dto.observaciones,
-    });
-
     this.logger.log(`Turno finalizado: ${id}`);
+
+    const payload = {
+      turno_id: turno.id,
+      numero_turno: turno.numero_turno,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      medico_id: dto.medico_id,
+      nivel_triage: turno.nivel_triage_id || 0,
+      tiempo_espera_minutos: tiempoEsperaMin,
+      tiempo_atencion_minutos: tiempoAtencionMin,
+      diagnostico: dto.diagnostico,
+      tratamiento: dto.tratamiento,
+      observaciones: dto.observaciones,
+    };
+
+    try {
+      await this.eventPublisher.publishPacienteAtendido(payload);
+    } catch (err) {
+      this.logger.warn(`No se pudo publicar evento paciente atendido: ${err.message}`);
+    }
+
+    try {
+      await this.coreNotifier.notificarPacienteAtendido(payload);
+    } catch (err) {
+      this.logger.warn(`No se pudo notificar a Core: ${err.message}`);
+    }
 
     return turnoActualizado as unknown as Turno;
   }
