@@ -312,6 +312,29 @@ export class TurnoService {
 
     this.logger.log(`Turno finalizado: ${id}`);
 
+    // ─── BLOQUE NUEVO: guardar consulta de urgencia ───────────────────────
+    try {
+      await this.prisma.consultas_urgencia.create({
+        data: {
+          turno_id: turno.id,
+          registro_triage_id: (turno as any).registro_triage_id ?? null,
+          paciente_id: turno.paciente_id,
+          medico_id: dto.medico_id,
+          hospital_id: turno.hospital_id,
+          diagnostico: dto.diagnostico,
+          tratamiento: dto.tratamiento,
+          observaciones: dto.observaciones ?? null,
+          nivel_triage: turno.nivel_triage_id ?? null,
+          tiempo_espera_minutos: tiempoEsperaMin,
+          tiempo_atencion_minutos: tiempoAtencionMin,
+        },
+      });
+      this.logger.log(`Consulta de urgencia registrada para turno ${id}`);
+    } catch (err) {
+      this.logger.error(`No se pudo guardar consulta de urgencia: ${err.message}`);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const payload = {
       turno_id: turno.id,
       numero_turno: turno.numero_turno,
