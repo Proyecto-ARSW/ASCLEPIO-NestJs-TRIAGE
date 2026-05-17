@@ -35,9 +35,6 @@ export class TurnoService {
     private readonly coreNotifier: CoreNotifierService,
   ) {}
 
-  /**
-   * Crea un nuevo turno de urgencia
-   */
   async crearTurnoUrgencia(dto: CrearTurnoUrgenciaDto): Promise<Turno> {
     await this.coreClient.sincronizarPaciente(dto.paciente_id);
 
@@ -365,17 +362,57 @@ export class TurnoService {
     await this.eventPublisher.publishTurnoCancelado({
       turno_id: turno.id,
       hospital_id: turno.hospital_id,
-      razon: 'Cancelado por usuario',
+      razon: 'Cancelado por administración',
     });
     await this.coreNotifier.notificarTurnoCancelado({
       turno_id: turno.id,
       hospital_id: turno.hospital_id,
       paciente_id: turno.paciente_id,
       numero_turno: turno.numero_turno,
-      razon: 'Cancelado por usuario',
+      razon: 'Cancelado por administración',
     });
 
-    this.logger.log(`Turno cancelado: ${id}`);
+    this.logger.log(`Turno cancelado (admin): ${id}`);
+
+    return turnoActualizado as unknown as Turno;
+  }
+
+  async cancelarTurnoPorPaciente(id: string): Promise<Turno> {
+    const turno = await this.obtenerPorId(id);
+
+    const estadosCancelables = [
+      EstadoTurno.CLASIFICACION_PENDIENTE,
+      EstadoTurno.ESPERANDO_CONFIRMACION,
+      EstadoTurno.EN_ESPERA,
+    ];
+
+    if (!estadosCancelables.includes(turno.estado as EstadoTurno)) {
+      throw new BadRequestException(
+        `No se puede cancelar un turno en estado ${turno.estado}. Solo se pueden cancelar turnos en espera o clasificación.`,
+      );
+    }
+
+    const turnoActualizado = await this.prisma.turnos.update({
+      where: { id },
+      data: {
+        estado: EstadoTurno.CANCELADO,
+      },
+    });
+
+    await this.eventPublisher.publishTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      razon: 'Cancelado por el paciente',
+    });
+    await this.coreNotifier.notificarTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      numero_turno: turno.numero_turno,
+      razon: 'Cancelado por el paciente',
+    });
+
+    this.logger.log(`Turno cancelado (paciente): ${id}`);
 
     return turnoActualizado as unknown as Turno;
   }
