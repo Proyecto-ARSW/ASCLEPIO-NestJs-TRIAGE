@@ -296,6 +296,8 @@ export class TurnoService {
       );
     }
 
+    await this.coreClient.sincronizarMedico(dto.medico_id);
+
     const tiempoEsperaMs = (turno.llamado_en || new Date()).getTime() - turno.creado_en.getTime();
     const tiempoEsperaMin = Math.floor(tiempoEsperaMs / 60000);
     const tiempoAtencionMs = Date.now() - (turno.llamado_en || new Date()).getTime();
@@ -314,10 +316,15 @@ export class TurnoService {
 
     // ─── BLOQUE NUEVO: guardar consulta de urgencia ───────────────────────
     try {
+      const turnoCompleto = await this.prisma.turnos.findUnique({
+        where: { id },
+        select: { registro_triage_id: true },
+      });
+
       await this.prisma.consultas_urgencia.create({
         data: {
           turno_id: turno.id,
-          registro_triage_id: (turno as any).registro_triage_id ?? null,
+          registro_triage_id: turnoCompleto?.registro_triage_id ?? null,
           paciente_id: turno.paciente_id,
           medico_id: dto.medico_id,
           hospital_id: turno.hospital_id,
