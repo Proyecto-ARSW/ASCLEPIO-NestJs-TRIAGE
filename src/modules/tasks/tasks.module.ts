@@ -5,12 +5,14 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { TasksService } from './tasks.service';
 import { AlertasModule } from '../alertas/alertas.module';
 import { WebsocketsModule } from '../websockets/websockets.module';
+import { ColaModule } from '../cola/cola.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     AlertasModule,
     WebsocketsModule,
+    ColaModule,
   ],
   providers: [TasksService],
 })

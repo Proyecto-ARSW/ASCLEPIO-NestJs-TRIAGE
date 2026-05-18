@@ -7,6 +7,7 @@ import { TriageGateway } from '@/modules/websockets/gateways/triage.gateway';
 import { TriageEventPublisher } from '@/modules/eventos/publishers/triage-event.publisher';
 import { IngresoTriageDto } from '../dto/ingreso-triage.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { IngresoISISvoiceDto } from '../dto/ingreso-isisvoice.dto';
  
 @Injectable()
 export class RecepcionService {
@@ -31,14 +32,13 @@ export class RecepcionService {
  
     // 2. Generar número de turno
     const hoy = new Date();
+    const inicioDelDia = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()));
+    const finDelDia   = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() + 1));
     const ultimoTurno = await this.prisma.turnos.findFirst({
       where: {
         hospital_id: dto.hospital_id,
         tipo_turno: 'URGENCIA',
-        fecha: {
-          gte: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()),
-          lt: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1),
-        },
+        fecha: { gte: inicioDelDia, lt: finDelDia },
       },
       orderBy: { numero_turno: 'desc' },
       select: { numero_turno: true },
@@ -259,5 +259,52 @@ export class RecepcionService {
       probabilidades: null,
     };
   }
+
+    async procesarIngresoISISvoice(
+  isisDto: IngresoISISvoiceDto,
+  hospitalId: number,
+  enfermeroId: string,
+) {
+  this.logger.log(
+    `Ingreso ISISvoice — patient_id: ${isisDto.patient_id}, Procedure: ${isisDto.procedure_id}`,
+  );
+
+  const paciente = await this.coreClient.buscarPacientePorDocumento(
+    isisDto.patient_id,
+  );
+
+  const dto: IngresoTriageDto = {
+    paciente_id: paciente.id,
+    hospital_id: hospitalId,
+    enfermero_id: enfermeroId,
+
+    motivo_consulta:
+      isisDto.transcript ||
+      isisDto.preliminary_history.comentario ||
+      'Sin descripción registrada',
+
+    sintomas: isisDto.preliminary_history.sintomas ?? [],
+    embarazo: isisDto.preliminary_history.embarazo ?? false,
+    antecedentes: isisDto.preliminary_history.antecedentes ?? [],
+    posibles_causas: isisDto.preliminary_history.posiblesCausas ?? [],
+    nivel_preliminar_isisvoice: isisDto.preliminary_history.nivelPrioridad ?? 3,
+    comentario_paciente: isisDto.preliminary_history.comentario,
+
+    presion_sistolica: isisDto.vital_signs.systolic_bp_mmhg,
+    presion_diastolica: isisDto.vital_signs.diastolic_bp_mmhg,
+    frecuencia_cardiaca: isisDto.vital_signs.heart_rate_bpm,
+    frecuencia_respiratoria: isisDto.vital_signs.respiratory_rate_bpm,
+    temperatura: isisDto.vital_signs.temperature_c,
+    saturacion_oxigeno: isisDto.vital_signs.oxygen_saturation_pct,
+    peso_kg: isisDto.vital_signs.weight_kg,
+    altura_cm: isisDto.vital_signs.height_cm,
+
+    observaciones_enfermero: isisDto.preliminary_history.comentariosIA
+      ? `IA: ${isisDto.preliminary_history.comentariosIA}`
+      : undefined,
+  };
+
+  return this.procesarIngreso(dto);
+}
 }
 

@@ -36,6 +36,7 @@ model pacientes {
   eps              String?            @db.VarChar(100)
   alergias         String?
   creado_en        DateTime           @default(now()) @db.Timestamp(6)
+  consultas_urgencia consultas_urgencia[]
   registros_triage registros_triage[]
   turnos           turnos[]
 }
@@ -59,6 +60,7 @@ model hospitales {
   actualizado_en      DateTime           @default(now()) @db.Timestamp(6)
   alertas_criticas    alertas_criticas[]
   alertas_triage      alertas_triage[]
+  consultas_urgencia  consultas_urgencia[]
   registros_triage    registros_triage[]
   turnos              turnos[]
 
@@ -81,6 +83,7 @@ model medicos {
   consultorio     String?  @db.VarChar(20)
   activo          Boolean  @default(true)
   creado_en       DateTime @default(now()) @db.Timestamp(6)
+  consultas_urgencia consultas_urgencia[]
   turnos          turnos[]
 }
 
@@ -189,6 +192,7 @@ model registros_triage {
   pacientes                  pacientes                  @relation(fields: [paciente_id], references: [id])
   triage_original            registros_triage?          @relation("TriageReclasificacion", fields: [triage_original_id], references: [id])
   reclasificaciones          registros_triage[]         @relation("TriageReclasificacion")
+  consultas_urgencia         consultas_urgencia[]
   turnos                     turnos[]
 
   @@index([paciente_id], map: "idx_registros_triage_paciente")
@@ -246,6 +250,7 @@ model turnos {
   actualizado_en        DateTime           @default(now()) @db.Timestamp(6)
   alertas_criticas      alertas_criticas[]
   alertas_triage        alertas_triage[]
+  consultas_urgencia    consultas_urgencia[]
   enfermero_triage      enfermeros?        @relation("EnfermeroTriage", fields: [enfermero_triage_id], references: [id])
   especialidades        especialidades?    @relation(fields: [especialidad_id], references: [id])
   hospitales            hospitales         @relation(fields: [hospital_id], references: [id])
@@ -306,6 +311,32 @@ model alertas_triage {
 
   @@index([hospital_id, resuelta, creado_en], map: "idx_alertas_hospital")
   @@index([turno_id], map: "idx_alertas_turno")
+}
+
+model consultas_urgencia {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  turno_id                String            @db.Uuid
+  registro_triage_id      String?           @db.Uuid
+  paciente_id             String            @db.Uuid
+  medico_id               String            @db.Uuid
+  hospital_id             Int
+  diagnostico             String
+  tratamiento             String
+  observaciones           String?
+  nivel_triage            Int?
+  tiempo_espera_minutos   Int?              @db.SmallInt
+  tiempo_atencion_minutos Int?              @db.SmallInt
+  creado_en               DateTime          @default(now()) @db.Timestamp(6)
+
+  turno           turnos              @relation(fields: [turno_id], references: [id])
+  registro_triage registros_triage?   @relation(fields: [registro_triage_id], references: [id])
+  pacientes       pacientes           @relation(fields: [paciente_id], references: [id])
+  medicos         medicos             @relation(fields: [medico_id], references: [id])
+  hospitales      hospitales          @relation(fields: [hospital_id], references: [id])
+
+  @@index([paciente_id, creado_en], map: "idx_consultas_urgencia_paciente")
+  @@index([hospital_id, creado_en], map: "idx_consultas_urgencia_hospital")
+  @@index([turno_id], map: "idx_consultas_urgencia_turno")
 }
 
 enum rol_usuario {

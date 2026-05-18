@@ -225,6 +225,8 @@ export class ConfirmacionService {
         nivel_triage: nivelTriage,
         tipo_alerta: tipoAlerta as any,
         creado_en: new Date(),
+        confirmada: true,
+        activa: false,
       },
     });
 
@@ -346,5 +348,31 @@ export class ConfirmacionService {
       posicion_cola: posicionCola,
       registro_triage: turno.registro_triage,
     };
+  }
+
+  async resumenPorHospital(hospitalId: number): Promise<{ pendientes: number; confirmadas_hoy: number }> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const [pendientes, confirmadas_hoy] = await Promise.all([
+      this.prisma.turnos.count({
+        where: {
+          hospital_id: hospitalId,
+          estado: {
+            in: ['CLASIFICACION_PENDIENTE', 'ESPERANDO_CONFIRMACION'],
+          },
+        },
+      }),
+      this.prisma.confirmaciones_enfermero.count({
+        where: {
+          creado_en: { gte: hoy },
+          registro_triage: {
+            hospital_id: hospitalId,
+          },
+        },
+      }),
+    ]);
+
+    return { pendientes, confirmadas_hoy };
   }
 }

@@ -38,19 +38,23 @@ export class TurnoController {
 
   @Post()
   @Roles('RECEPCIONISTA', 'ADMIN', 'ENFERMERO')
-  @ApiOperation({ summary: 'Crear turno de urgencia', description: 'Crea un nuevo turno de urgencia para un paciente. Roles: RECEPCIONISTA, ADMIN, ENFERMERO.' })
+  @ApiOperation({ summary: 'Crear turno de urgencia' })
   @ApiResponse({ status: 201, description: 'Turno creado exitosamente.' })
   @ApiResponse({ status: 400, description: 'Datos inválidos.' })
   @ApiResponse({ status: 401, description: 'No autenticado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos para esta acción.' })
   async crear(@Body() dto: CrearTurnoUrgenciaDto) {
     const turno = await this.turnoService.crearTurnoUrgencia(dto);
-    return { success: true, data: turno, mensaje: `Turno ${turno.numero_turno} creado exitosamente` };
+    return {
+      success: true,
+      data: turno,
+      mensaje: `Turno ${turno.numero_turno} creado exitosamente`,
+    };
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener turno por ID' })
-  @ApiParam({ name: 'id', description: 'ID UUID del turno', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiParam({ name: 'id', description: 'ID UUID del turno' })
   @ApiResponse({ status: 200, description: 'Turno encontrado.' })
   @ApiResponse({ status: 404, description: 'Turno no encontrado.' })
   async obtenerPorId(@Param('id') id: string) {
@@ -59,10 +63,10 @@ export class TurnoController {
   }
 
   @Get('hospital/:hospital_id')
-  @ApiOperation({ summary: 'Obtener turnos por hospital', description: 'Retorna los turnos de un hospital, con filtros opcionales por fecha y estado.' })
-  @ApiParam({ name: 'hospital_id', description: 'ID del hospital', example: '1' })
-  @ApiQuery({ name: 'fecha', required: false, description: 'Fecha de consulta (YYYY-MM-DD)', example: '2026-04-21' })
-  @ApiQuery({ name: 'estado', required: false, enum: EstadoTurno, description: 'Estado del turno a filtrar' })
+  @ApiOperation({ summary: 'Obtener turnos por hospital' })
+  @ApiParam({ name: 'hospital_id', description: 'ID del hospital' })
+  @ApiQuery({ name: 'fecha', required: false, description: 'Fecha (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'estado', required: false, enum: EstadoTurno })
   @ApiResponse({ status: 200, description: 'Lista de turnos.' })
   async obtenerPorHospital(
     @Param('hospital_id') hospitalId: string,
@@ -79,10 +83,9 @@ export class TurnoController {
 
   @Put(':id/estado')
   @Roles('ENFERMERO', 'MEDICO', 'ADMIN')
-  @ApiOperation({ summary: 'Actualizar estado del turno', description: 'Cambia el estado de un turno. Roles: ENFERMERO, MEDICO, ADMIN.' })
-  @ApiParam({ name: 'id', description: 'ID UUID del turno', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOperation({ summary: 'Actualizar estado del turno' })
+  @ApiParam({ name: 'id', description: 'ID UUID del turno' })
   @ApiResponse({ status: 200, description: 'Estado actualizado.' })
-  @ApiResponse({ status: 404, description: 'Turno no encontrado.' })
   async actualizarEstado(@Param('id') id: string, @Body() dto: ActualizarEstadoTurnoDto) {
     const turno = await this.turnoService.actualizarEstado(id, dto);
     return { success: true, data: turno, mensaje: 'Estado actualizado exitosamente' };
@@ -90,28 +93,54 @@ export class TurnoController {
 
   @Put(':id/llamar')
   @Roles('MEDICO')
-  @ApiOperation({ summary: 'Llamar paciente a consultorio', description: 'El médico llama al paciente para atención. Rol: MEDICO.' })
-  @ApiParam({ name: 'id', description: 'ID UUID del turno', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOperation({ summary: 'Llamar paciente a consultorio' })
+  @ApiParam({ name: 'id', description: 'ID UUID del turno' })
   @ApiResponse({ status: 200, description: 'Paciente llamado exitosamente.' })
   async llamarPaciente(@Param('id') id: string, @Body() dto: LlamarPacienteDto) {
     const turno = await this.turnoService.llamarPaciente(id, dto);
-    return { success: true, data: turno, mensaje: `Paciente del turno ${turno.numero_turno} llamado a consultorio ${dto.consultorio}` };
+    return {
+      success: true,
+      data: turno,
+      mensaje: `Paciente del turno ${turno.numero_turno} llamado a consultorio ${dto.consultorio}`,
+    };
   }
 
   @Put(':id/finalizar')
   @Roles('MEDICO')
-  @ApiOperation({ summary: 'Finalizar turno de atención', description: 'El médico registra diagnóstico y tratamiento para cerrar el turno. Rol: MEDICO.' })
-  @ApiParam({ name: 'id', description: 'ID UUID del turno', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOperation({ summary: 'Finalizar turno de atención' })
+  @ApiParam({ name: 'id', description: 'ID UUID del turno' })
   @ApiResponse({ status: 200, description: 'Turno finalizado.' })
   async finalizarTurno(@Param('id') id: string, @Body() dto: FinalizarTurnoDto) {
     const turno = await this.turnoService.finalizarTurno(id, dto);
     return { success: true, data: turno, mensaje: 'Turno finalizado exitosamente' };
   }
 
+  // ─── Cancelación por el paciente (cualquier usuario autenticado) ──────────
+  // Sin @Roles → RolesGuard permite paso si no hay restricción de rol definida
+
+  @Put(':id/cancelar-paciente')
+  @ApiOperation({
+    summary: 'Cancelar turno (por el paciente)',
+    description:
+      'El paciente cancela su propio turno. Solo válido si el turno está en espera o clasificación.',
+  })
+  @ApiParam({ name: 'id', description: 'ID UUID del turno' })
+  @ApiResponse({ status: 200, description: 'Turno cancelado.' })
+  @ApiResponse({
+    status: 400,
+    description: 'El turno no puede cancelarse en su estado actual.',
+  })
+  async cancelarTurnoPaciente(@Param('id') id: string) {
+    const turno = await this.turnoService.cancelarTurnoPorPaciente(id);
+    return { success: true, data: turno, mensaje: 'Turno cancelado exitosamente' };
+  }
+
+  // ─── Cancelación por administración ──────────────────────────────────────
+
   @Delete(':id')
   @Roles('ADMIN', 'RECEPCIONISTA')
-  @ApiOperation({ summary: 'Cancelar turno', description: 'Cancela un turno activo. Roles: ADMIN, RECEPCIONISTA.' })
-  @ApiParam({ name: 'id', description: 'ID UUID del turno', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOperation({ summary: 'Cancelar turno (administración)' })
+  @ApiParam({ name: 'id', description: 'ID UUID del turno' })
   @ApiResponse({ status: 200, description: 'Turno cancelado.' })
   async cancelarTurno(@Param('id') id: string) {
     const turno = await this.turnoService.cancelarTurno(id);

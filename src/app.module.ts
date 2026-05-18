@@ -29,12 +29,14 @@ import { AlertasModule } from './modules/alertas/alertas.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CoreClientModule } from './modules/core-client/core-client.module';
+import { ConsultasUrgenciaModule } from './modules/consultas-urgencia/consultas-urgencia.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      envFilePath: process.env.NODE_ENV === 'production' ? ['.env.production', '.env'] : ['.env'],
       load: [appConfig, databaseConfig, redisConfig, rabbitmqConfig],
     }),
     GraphQLModule.forRoot<ApolloDriverConfig>({
@@ -82,6 +84,7 @@ import { CoreClientModule } from './modules/core-client/core-client.module';
     TasksModule,        // Cron jobs (escalamiento automático)
     DashboardModule,    // 6 dashboards especializados
     CoreClientModule,     // Comunicación con Core (HTTP)
+    ConsultasUrgenciaModule, // Historial de consultas urgencia por paciente
   ],
   controllers: [],
   providers: [],

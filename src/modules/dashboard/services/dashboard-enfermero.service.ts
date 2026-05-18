@@ -15,7 +15,7 @@ export class DashboardEnfermeroService {
    * Obtiene el dashboard del enfermero
    */
   async obtenerDashboard(hospitalId: number): Promise<DashboardEnfermero> {
-    this.logger.debug(`🩺 Dashboard enfermero - Hospital: ${hospitalId}`);
+    this.logger.debug(`Dashboard enfermero - Hospital: ${hospitalId}`);
 
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);

@@ -197,6 +197,13 @@ export class AlertaCriticaService {
     this.logger.log(`Alertas desactivadas para turno ${turnoId}`);
   }
 
+  async buscarUsuarios(ids: string[]) {
+    return this.prisma.usuarios.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, nombre: true, apellido: true },
+    });
+  }
+
   /**
    * Obtiene médicos disponibles en el hospital
    */

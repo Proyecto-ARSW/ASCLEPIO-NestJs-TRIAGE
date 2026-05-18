@@ -25,26 +25,25 @@ async function bootstrap() {
     });
   }
 
-  // CORS — soporta múltiples orígenes separados por coma en CORS_ORIGIN
-  const corsOriginRaw = configService.get<string>('app.corsOrigin') || 'http://localhost:5173';
+  const corsOriginRaw = process.env.CORS_ORIGIN || 'http://localhost:5173';
   const corsOrigins = corsOriginRaw.split(',').map((o) => o.trim()).filter(Boolean);
 
+  console.log(`[CORS] Origins permitidos: ${corsOrigins.join(', ')}`);
+
   app.enableCors({
-    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (corsOrigins.includes(origin) || corsOrigins.includes('*')) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-api-key'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
-
-  // Validation Pipe global
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
 
   // Swagger
   const swaggerConfig = new DocumentBuilder()
@@ -75,6 +74,14 @@ async function bootstrap() {
       operationsSorter: 'alpha',
     },
   });
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: false,
+    }),
+  );
 
   await app.listen(port);
 

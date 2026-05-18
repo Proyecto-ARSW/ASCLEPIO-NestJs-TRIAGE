@@ -2,6 +2,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package*.json ./
 
 RUN npm ci
@@ -16,6 +18,8 @@ RUN npm run build
 FROM node:20-alpine AS production
 
 WORKDIR /app
+
+RUN apk add --no-cache openssl
 
 COPY package*.json ./
 
@@ -35,4 +39,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s \
   CMD node -e "require('http').get('http://localhost:3001/health/live', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
 
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node prisma/seed-catalog.js && node dist/src/main.js"]
