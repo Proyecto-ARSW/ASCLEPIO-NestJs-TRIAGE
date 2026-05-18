@@ -189,6 +189,21 @@ export class TurnoService {
 
     await this.coreClient.sincronizarMedico(dto.medico_id);
 
+    const medico = await this.prisma.medicos.findFirst({
+      where: { usuario_id: dto.medico_id },
+    });
+
+    this.logger.debug(`[llamarPaciente] Buscando médico con usuario_id: ${dto.medico_id}`);
+    this.logger.debug(`[llamarPaciente] Médico encontrado:`, medico);
+
+    if (!medico) {
+      throw new NotFoundException(
+        `Médico con usuario_id ${dto.medico_id} no encontrado en triage`,
+      );
+    }
+
+    this.logger.log(`[llamarPaciente] Médico encontrado con id: ${medico.id}`);
+
     if (turno.nivel_triage_id) {
       await this.colaService.removerDeCola(id, turno.hospital_id, turno.nivel_triage_id);
       this.logger.log(`Turno removido de cola Redis`);
@@ -198,7 +213,7 @@ export class TurnoService {
       where: { id },
       data: {
         estado: EstadoTurno.EN_CONSULTA,
-        medico_id: dto.medico_id,
+        medico_id: medico.id,
         llamado_en: new Date(),
       },
       include: {
@@ -207,11 +222,7 @@ export class TurnoService {
       },
     });
 
-    this.logger.log(`Paciente llamado: Turno ${turno.numero_turno} - Consultorio: ${dto.consultorio}`);
-
-    const medico = await this.prisma.medicos.findUnique({
-      where: { id: dto.medico_id },
-    });
+    this.logger.log(`[llamarPaciente] Turno actualizado. Nuevo medico_id: ${turnoActualizado.medico_id}`);
 
     const medicoUsuario = medico
       ? await this.prisma.usuarios.findUnique({ where: { id: medico.usuario_id } })
@@ -249,7 +260,7 @@ export class TurnoService {
       numero_turno: turno.numero_turno,
       hospital_id: turno.hospital_id,
       paciente_id: turno.paciente_id,
-      medico_id: dto.medico_id,
+      medico_id: medico.id,
       consultorio: dto.consultorio,
       nivel_triage: turno.nivel_triage_id || 0,
       tiempo_espera_minutos: tiempoEsperaMin,
