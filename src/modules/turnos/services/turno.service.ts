@@ -274,9 +274,16 @@ export class TurnoService {
 
   async finalizarTurno(id: string, dto: FinalizarTurnoDto): Promise<Turno> {
     const turno = await this.obtenerPorId(id);
+
     if (turno.estado !== EstadoTurno.EN_CONSULTA) {
       throw new BadRequestException(
         `El turno debe estar en estado EN_CONSULTA. Estado actual: ${turno.estado}`,
+      );
+    }
+
+    if (!turno.medico_id) {
+      throw new BadRequestException(
+        `El turno ${id} no tiene médico asignado. El turno debe pasar por el endpoint /llamar antes de finalizar.`,
       );
     }
 
@@ -295,39 +302,25 @@ export class TurnoService {
       },
     });
 
-    // ─── BLOQUE: guardar consulta de urgencia ─────────────────────────────
-    // Usamos turno.medico_id (ya sincronizado en llamarPaciente) para la FK,
-    // en lugar de dto.medico_id que puede ser un ID diferente (ej. usuario_id).
-    try {
-      const turnoCompleto = await this.prisma.turnos.findUnique({
-        where: { id },
-        select: { registro_triage_id: true, medico_id: true },
-      });
+    // Crear el registro en consultas_urgencia usando el medico_id ya guardado en el turno
+    // (que es el medicos.id correcto, asignado durante llamarPaciente)
+    await this.prisma.consultas_urgencia.create({
+      data: {
+        turno_id: turno.id,
+        paciente_id: turno.paciente_id,
+        medico_id: turno.medico_id,
+        hospital_id: turno.hospital_id,
+        diagnostico: dto.diagnostico,
+        tratamiento: dto.tratamiento,
+        observaciones: dto.observaciones ?? null,
+        nivel_triage: turno.nivel_triage_id ?? 0,
+        tiempo_espera_minutos: tiempoEsperaMin,
+        tiempo_atencion_minutos: tiempoAtencionMin,
+        fecha_atencion: new Date(),
+      },
+    });
 
-      const medicoIdParaConsulta = turnoCompleto?.medico_id ?? null;
-
-      if (!medicoIdParaConsulta) {
-        this.logger.warn(`Turno ${id} no tiene medico_id; omitiendo consulta de urgencia`);
-      } else {
-        await this.prisma.consultas_urgencia.create({
-          data: {
-            turno_id: turno.id,
-            paciente_id: turno.paciente_id,
-            medico_id: turno.medico_id,        // ya es el medicos.id correcto
-            hospital_id: turno.hospital_id,
-            diagnostico: dto.diagnostico,
-            tratamiento: dto.tratamiento,
-            observaciones: dto.observaciones ?? null,
-            nivel_triage: turno.nivel_triage_id ?? 0,
-            fecha_atencion: new Date(),
-          },
-        });
-        this.logger.log(`Consulta de urgencia registrada para turno ${id}`);
-      }
-    } catch (err) {
-      this.logger.error(`No se pudo guardar consulta de urgencia: ${err.message}`);
-    }
-    // ──────────────────────────────────────────────────────────────────────
+    this.logger.log(`consulta_urgencia creada para turno ${id} — médico: ${turno.medico_id}`);
 
     await this.eventPublisher.publishPacienteAtendido({
       turno_id: turno.id,
@@ -342,6 +335,7 @@ export class TurnoService {
       tratamiento: dto.tratamiento,
       observaciones: dto.observaciones,
     });
+
     await this.coreNotifier.notificarPacienteAtendido({
       turno_id: turno.id,
       numero_turno: turno.numero_turno,
@@ -357,34 +351,6 @@ export class TurnoService {
     });
 
     this.logger.log(`Turno finalizado: ${id}`);
-
-    return turnoActualizado as unknown as Turno;
-  }
-
-  async cancelarTurno(id: string): Promise<Turno> {
-    const turno = await this.obtenerPorId(id);
-
-    const turnoActualizado = await this.prisma.turnos.update({
-      where: { id },
-      data: {
-        estado: EstadoTurno.CANCELADO,
-      },
-    });
-
-    await this.eventPublisher.publishTurnoCancelado({
-      turno_id: turno.id,
-      hospital_id: turno.hospital_id,
-      razon: 'Cancelado por administración',
-    });
-    await this.coreNotifier.notificarTurnoCancelado({
-      turno_id: turno.id,
-      hospital_id: turno.hospital_id,
-      paciente_id: turno.paciente_id,
-      numero_turno: turno.numero_turno,
-      razon: 'Cancelado por administración',
-    });
-
-    this.logger.log(`Turno cancelado (admin): ${id}`);
 
     return turnoActualizado as unknown as Turno;
   }
