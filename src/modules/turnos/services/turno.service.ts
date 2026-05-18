@@ -187,14 +187,16 @@ export class TurnoService {
       );
     }
 
+    // dto.medico_id es el usuarios.id que viene del JWT del médico autenticado
     await this.coreClient.sincronizarMedico(dto.medico_id);
 
+    // Buscar por usuario_id DESPUÉS de sincronizar (la sincronización lo crea si no existe)
     const medico = await this.prisma.medicos.findFirst({
       where: { usuario_id: dto.medico_id },
     });
 
     this.logger.debug(`[llamarPaciente] Buscando médico con usuario_id: ${dto.medico_id}`);
-    this.logger.debug(`[llamarPaciente] Médico encontrado:`, medico);
+    this.logger.debug(`[llamarPaciente] Médico encontrado: ${JSON.stringify(medico)}`);
 
     if (!medico) {
       throw new NotFoundException(
@@ -209,11 +211,12 @@ export class TurnoService {
       this.logger.log(`Turno removido de cola Redis`);
     }
 
+    // Usar medico.id (PK de la tabla medicos del triage), NO el usuario_id
     const turnoActualizado = await this.prisma.turnos.update({
       where: { id },
       data: {
         estado: EstadoTurno.EN_CONSULTA,
-        medico_id: medico.id,
+        medico_id: medico.id,   // <-- CORREGIDO: PK de medicos
         llamado_en: new Date(),
       },
       include: {
@@ -222,11 +225,11 @@ export class TurnoService {
       },
     });
 
-    this.logger.log(`[llamarPaciente] Turno actualizado. Nuevo medico_id: ${turnoActualizado.medico_id}`);
+    this.logger.log(`Paciente llamado: Turno ${turno.numero_turno} - Consultorio: ${dto.consultorio}`);
 
-    const medicoUsuario = medico
-      ? await this.prisma.usuarios.findUnique({ where: { id: medico.usuario_id } })
-      : null;
+    const medicoUsuario = await this.prisma.usuarios.findUnique({
+      where: { id: medico.usuario_id },
+    });
 
     const paciente = await this.prisma.pacientes.findUnique({
       where: { id: turno.paciente_id },
@@ -260,7 +263,7 @@ export class TurnoService {
       numero_turno: turno.numero_turno,
       hospital_id: turno.hospital_id,
       paciente_id: turno.paciente_id,
-      medico_id: medico.id,
+      medico_id: dto.medico_id,  // se mantiene el usuario_id para que M1 lo procese
       consultorio: dto.consultorio,
       nivel_triage: turno.nivel_triage_id || 0,
       tiempo_espera_minutos: tiempoEsperaMin,
@@ -309,16 +312,14 @@ export class TurnoService {
         await this.prisma.consultas_urgencia.create({
           data: {
             turno_id: turno.id,
-            registro_triage_id: turnoCompleto?.registro_triage_id ?? null,
             paciente_id: turno.paciente_id,
-            medico_id: medicoIdParaConsulta,
+            medico_id: turno.medico_id,        // ya es el medicos.id correcto
             hospital_id: turno.hospital_id,
             diagnostico: dto.diagnostico,
             tratamiento: dto.tratamiento,
             observaciones: dto.observaciones ?? null,
-            nivel_triage: turno.nivel_triage_id ?? null,
-            tiempo_espera_minutos: tiempoEsperaMin,
-            tiempo_atencion_minutos: tiempoAtencionMin,
+            nivel_triage: turno.nivel_triage_id ?? 0,
+            fecha_atencion: new Date(),
           },
         });
         this.logger.log(`Consulta de urgencia registrada para turno ${id}`);
