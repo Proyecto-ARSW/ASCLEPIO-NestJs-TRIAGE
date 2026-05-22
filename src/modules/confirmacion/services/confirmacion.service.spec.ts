@@ -1,3 +1,5 @@
+// src/modules/confirmacion/services/confirmacion.service.spec.ts
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfirmacionService } from './confirmacion.service';
@@ -30,7 +32,12 @@ describe('ConfirmacionService', () => {
   };
 
   const mockEnfermero = { id: ENFERMERO_ID, usuario_id: 'usuario-enf-1', activo: true };
-  const mockNivelTriage = { id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00', tiempo_max_espera_min: 60 };
+  const mockNivelTriage = {
+    id: 3,
+    nombre: 'Amarillo',
+    color_codigo: '#FFFF00',
+    tiempo_max_espera_min: 60,
+  };
 
   const mockPrisma = {
     registros_triage: { findUnique: jest.fn(), update: jest.fn() },
@@ -38,6 +45,7 @@ describe('ConfirmacionService', () => {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
     enfermeros: { findUnique: jest.fn() },
     niveles_triage: { findUnique: jest.fn() },
@@ -45,16 +53,22 @@ describe('ConfirmacionService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
     },
     alertas_criticas: { create: jest.fn() },
     usuarios: { findUnique: jest.fn() },
   };
 
-  const mockCola = { agregarACola: jest.fn().mockResolvedValue(3) };
+  const mockCola = {
+    agregarACola: jest.fn().mockResolvedValue(3),
+    obtenerPosicionEnCola: jest.fn(),
+  };
+
   const mockEventPublisher = {
     publishTriageConfirmado: jest.fn().mockResolvedValue(undefined),
     publishAlertaCritica: jest.fn().mockResolvedValue(undefined),
   };
+
   const mockTriageGateway = {
     emitTriageConfirmado: jest.fn(),
     emitToPaciente: jest.fn(),
@@ -80,7 +94,10 @@ describe('ConfirmacionService', () => {
     mockPrisma.registros_triage.findUnique.mockResolvedValue(mockRegistro);
     mockPrisma.turnos.findFirst.mockResolvedValue(mockTurno);
     mockPrisma.enfermeros.findUnique.mockResolvedValue(mockEnfermero);
-    mockPrisma.niveles_triage.findUnique.mockResolvedValue({ ...mockNivelTriage, id: nivelFinal });
+    mockPrisma.niveles_triage.findUnique.mockResolvedValue({
+      ...mockNivelTriage,
+      id: nivelFinal,
+    });
     mockPrisma.confirmaciones_enfermero.create.mockResolvedValue({
       id: 'conf-1',
       nivel_sugerido_ia: 3,
@@ -91,6 +108,8 @@ describe('ConfirmacionService', () => {
     mockCola.agregarACola.mockResolvedValue(3);
     mockPrisma.usuarios.findUnique.mockResolvedValue({ nombre: 'María', apellido: 'García' });
   }
+
+  // ─── confirmarTriage ────────────────────────────────────────────────────────
 
   describe('confirmarTriage', () => {
     const dto = {
@@ -117,13 +136,22 @@ describe('ConfirmacionService', () => {
     it('debería registrar ESCALAMIENTO cuando el enfermero sube la prioridad (nivel menor)', async () => {
       const dtoEscalado = { ...dto, nivel_final: 1 };
       setupHappyPath(1);
+      // nivel 1 es crítico → activa crearAlertaCritica internamente
+      mockPrisma.turnos.findUnique.mockResolvedValue({
+        ...mockTurno,
+        pacientes: { usuario_id: 'user-pac' },
+      });
+      mockPrisma.alertas_criticas.create.mockResolvedValue({ id: 'alerta-esc-1' });
 
       const result = await service.confirmarTriage(dtoEscalado);
 
       expect(result.nivel_final).toBe(1);
       expect(mockPrisma.confirmaciones_enfermero.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ acepto_sugerencia: false, tipo_modificacion: 'ESCALAMIENTO' }),
+          data: expect.objectContaining({
+            acepto_sugerencia: false,
+            tipo_modificacion: 'ESCALAMIENTO',
+          }),
         }),
       );
     });
@@ -137,7 +165,10 @@ describe('ConfirmacionService', () => {
       expect(result.nivel_final).toBe(5);
       expect(mockPrisma.confirmaciones_enfermero.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ acepto_sugerencia: false, tipo_modificacion: 'DEGRADACION' }),
+          data: expect.objectContaining({
+            acepto_sugerencia: false,
+            tipo_modificacion: 'DEGRADACION',
+          }),
         }),
       );
     });
@@ -156,7 +187,9 @@ describe('ConfirmacionService', () => {
       await service.confirmarTriage(dto);
 
       expect(mockPrisma.turnos.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ estado: 'EN_ESPERA', nivel_triage_id: 3 }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ estado: 'EN_ESPERA', nivel_triage_id: 3 }),
+        }),
       );
     });
 
@@ -176,7 +209,10 @@ describe('ConfirmacionService', () => {
     it('debería crear alerta crítica para nivel 1', async () => {
       const dtoNivel1 = { ...dto, nivel_final: 1 };
       setupHappyPath(1);
-      mockPrisma.turnos.findUnique.mockResolvedValue({ ...mockTurno, pacientes: { usuario_id: 'user-pac' } });
+      mockPrisma.turnos.findUnique.mockResolvedValue({
+        ...mockTurno,
+        pacientes: { usuario_id: 'user-pac' },
+      });
       mockPrisma.alertas_criticas.create.mockResolvedValue({ id: 'alerta-critica-1' });
 
       await service.confirmarTriage(dtoNivel1);
@@ -188,7 +224,10 @@ describe('ConfirmacionService', () => {
     it('debería crear alerta crítica para nivel 2', async () => {
       const dtoNivel2 = { ...dto, nivel_final: 2 };
       setupHappyPath(2);
-      mockPrisma.turnos.findUnique.mockResolvedValue({ ...mockTurno, pacientes: { usuario_id: 'user-pac' } });
+      mockPrisma.turnos.findUnique.mockResolvedValue({
+        ...mockTurno,
+        pacientes: { usuario_id: 'user-pac' },
+      });
       mockPrisma.alertas_criticas.create.mockResolvedValue({ id: 'alerta-critica-2' });
 
       await service.confirmarTriage(dtoNivel2);
@@ -252,6 +291,8 @@ describe('ConfirmacionService', () => {
     });
   });
 
+  // ─── obtenerConfirmacion ────────────────────────────────────────────────────
+
   describe('obtenerConfirmacion', () => {
     it('debería retornar la confirmación si existe', async () => {
       const confirmacion = { id: 'conf-1', registro_triage_id: REGISTRO_ID };
@@ -269,6 +310,8 @@ describe('ConfirmacionService', () => {
     });
   });
 
+  // ─── obtenerConfirmacionesPorEnfermero ──────────────────────────────────────
+
   describe('obtenerConfirmacionesPorEnfermero', () => {
     it('debería retornar las últimas confirmaciones del enfermero', async () => {
       const confirmaciones = [{ id: 'c1' }, { id: 'c2' }];
@@ -280,6 +323,95 @@ describe('ConfirmacionService', () => {
       expect(mockPrisma.confirmaciones_enfermero.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { enfermero_id: ENFERMERO_ID }, take: 50 }),
       );
+    });
+
+    it('debería usar límite por defecto de 50 si no se especifica', async () => {
+      mockPrisma.confirmaciones_enfermero.findMany.mockResolvedValue([]);
+
+      await service.obtenerConfirmacionesPorEnfermero(ENFERMERO_ID);
+
+      expect(mockPrisma.confirmaciones_enfermero.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 50 }),
+      );
+    });
+  });
+
+  // ─── obtenerEstadoTriage ────────────────────────────────────────────────────
+
+  describe('obtenerEstadoTriage', () => {
+    it('debería lanzar NotFoundException si el turno no existe', async () => {
+      mockPrisma.turnos.findUnique.mockResolvedValue(null);
+
+      await expect(service.obtenerEstadoTriage('turno-inexistente')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('debería retornar posición en cola cuando el turno está EN_ESPERA', async () => {
+      const turnoEnEspera = {
+        ...mockTurno,
+        estado: 'EN_ESPERA',
+        nivel_triage_id: 3,
+        registro_triage: null,
+      };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnEspera);
+      mockPrisma.niveles_triage.findUnique.mockResolvedValue(mockNivelTriage);
+      mockCola.obtenerPosicionEnCola.mockResolvedValue(2);
+
+      const result = await service.obtenerEstadoTriage(TURNO_ID);
+
+      expect(result.estado).toBe('EN_ESPERA');
+      expect(result.posicion_cola).toBe(2);
+      expect(mockCola.obtenerPosicionEnCola).toHaveBeenCalledWith(TURNO_ID, HOSPITAL_ID, 3);
+    });
+
+    it('debería retornar posicion_cola null cuando el turno no está EN_ESPERA', async () => {
+      const turnoEnConsulta = {
+        ...mockTurno,
+        estado: 'EN_CONSULTA',
+        nivel_triage_id: 3,
+        registro_triage: null,
+      };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnConsulta);
+      mockPrisma.niveles_triage.findUnique.mockResolvedValue(mockNivelTriage);
+
+      const result = await service.obtenerEstadoTriage(TURNO_ID);
+
+      expect(result.estado).toBe('EN_CONSULTA');
+      expect(result.posicion_cola).toBeNull();
+      expect(mockCola.obtenerPosicionEnCola).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── resumenPorHospital ─────────────────────────────────────────────────────
+
+  describe('resumenPorHospital', () => {
+    it('debería retornar conteos de pendientes y confirmadas hoy', async () => {
+      mockPrisma.turnos.count.mockResolvedValue(7);
+      mockPrisma.confirmaciones_enfermero.count.mockResolvedValue(15);
+
+      const result = await service.resumenPorHospital(HOSPITAL_ID);
+
+      expect(result.pendientes).toBe(7);
+      expect(result.confirmadas_hoy).toBe(15);
+      expect(mockPrisma.turnos.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            hospital_id: HOSPITAL_ID,
+            estado: { in: ['CLASIFICACION_PENDIENTE', 'ESPERANDO_CONFIRMACION'] },
+          }),
+        }),
+      );
+    });
+
+    it('debería retornar ceros cuando no hay actividad', async () => {
+      mockPrisma.turnos.count.mockResolvedValue(0);
+      mockPrisma.confirmaciones_enfermero.count.mockResolvedValue(0);
+
+      const result = await service.resumenPorHospital(HOSPITAL_ID);
+
+      expect(result.pendientes).toBe(0);
+      expect(result.confirmadas_hoy).toBe(0);
     });
   });
 });

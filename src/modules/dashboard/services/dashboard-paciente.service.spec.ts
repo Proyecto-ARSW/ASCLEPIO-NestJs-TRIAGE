@@ -24,11 +24,14 @@ describe('DashboardPacienteService', () => {
     finalizado_en: null,
     registro_triage_id: null,
     pacientes: { id: 'pac-1', usuario_id: 'user-pac-1' },
-    nivel_triage: { id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00' },
+    nivel_triage: { id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00', tiempo_max_espera_min: 60 },
   };
 
   const mockPrisma = {
-    turnos: { findUnique: jest.fn() },
+    turnos: {
+      findUnique: jest.fn(),
+      count: jest.fn(),
+    },
     usuarios: { findUnique: jest.fn() },
     medicos: { findUnique: jest.fn() },
     niveles_triage: { findUnique: jest.fn() },
@@ -36,10 +39,8 @@ describe('DashboardPacienteService', () => {
     confirmaciones_enfermero: { findFirst: jest.fn() },
   };
 
-  const mockCola = {
-    obtenerPosicionEnCola: jest.fn(),
-    obtenerColaPorNivel: jest.fn(),
-  };
+  // ColaService está inyectado pero el servicio no lo usa para calcular posición
+  const mockCola = {};
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -63,12 +64,14 @@ describe('DashboardPacienteService', () => {
 
     it('debería retornar el dashboard del paciente con posición en cola', async () => {
       mockPrisma.turnos.findUnique.mockResolvedValue(mockTurno);
-      mockPrisma.usuarios.findUnique.mockResolvedValue({ nombre: 'Juan', apellido: 'Pérez' });
       mockPrisma.niveles_triage.findUnique.mockResolvedValue({
-        id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00',
+        id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00', tiempo_max_espera_min: 60,
       });
-      mockCola.obtenerPosicionEnCola.mockResolvedValue(2);
-      mockCola.obtenerColaPorNivel.mockResolvedValue({ total: 5, items: [] });
+      // turnosDelante = 2 → posicion = 3
+      mockPrisma.turnos.count
+        .mockResolvedValueOnce(2)  // turnosDelante (posicion)
+        .mockResolvedValueOnce(5)  // totalCola
+        .mockResolvedValue(0);     // contarPacientesDelantePorNivel (niveles 1, 2)
       mockPrisma.registros_triage.findFirst.mockResolvedValue(null);
       mockPrisma.confirmaciones_enfermero.findFirst.mockResolvedValue(null);
 
@@ -76,7 +79,8 @@ describe('DashboardPacienteService', () => {
 
       expect(result.turno.numero_turno).toBe(5);
       expect(result.turno.estado).toBe(EstadoTurno.EN_ESPERA);
-      expect(result.turno.posicion_en_cola).toBe(3); // posicion + 1
+      expect(result.turno.posicion_en_cola).toBe(3); // turnosDelante + 1 = 2 + 1
+      expect(result.turno.total_en_cola).toBe(5);
       expect(result.turno.nivel_nombre).toBe('Amarillo');
     });
 
@@ -88,9 +92,7 @@ describe('DashboardPacienteService', () => {
         nivel_triage: null,
       };
       mockPrisma.turnos.findUnique.mockResolvedValue(turnoPendiente);
-      mockPrisma.usuarios.findUnique.mockResolvedValue({ nombre: 'Juan', apellido: 'Pérez' });
       mockPrisma.niveles_triage.findUnique.mockResolvedValue(null);
-      mockCola.obtenerColaPorNivel.mockResolvedValue({ total: 0, items: [] });
       mockPrisma.registros_triage.findFirst.mockResolvedValue(null);
       mockPrisma.confirmaciones_enfermero.findFirst.mockResolvedValue(null);
 
@@ -106,16 +108,56 @@ describe('DashboardPacienteService', () => {
         creado_en: new Date(Date.now() - 30 * 60000),
       };
       mockPrisma.turnos.findUnique.mockResolvedValue(turnoHace30min);
-      mockPrisma.usuarios.findUnique.mockResolvedValue(null);
-      mockPrisma.niveles_triage.findUnique.mockResolvedValue({ id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00' });
-      mockCola.obtenerPosicionEnCola.mockResolvedValue(1);
-      mockCola.obtenerColaPorNivel.mockResolvedValue({ total: 3, items: [] });
+      mockPrisma.niveles_triage.findUnique.mockResolvedValue({
+        id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00', tiempo_max_espera_min: 60,
+      });
+      mockPrisma.turnos.count.mockResolvedValue(0);
       mockPrisma.registros_triage.findFirst.mockResolvedValue(null);
       mockPrisma.confirmaciones_enfermero.findFirst.mockResolvedValue(null);
 
       const result = await service.obtenerDashboard(TURNO_ID);
 
       expect(result.turno.tiempo_espera_minutos).toBeGreaterThanOrEqual(29);
+    });
+
+    it('debería incluir historial con datos de registro de triage', async () => {
+      const mockRegistro = { creado_en: new Date(Date.now() - 15 * 60000) };
+      mockPrisma.turnos.findUnique.mockResolvedValue(mockTurno);
+      mockPrisma.niveles_triage.findUnique.mockResolvedValue({
+        id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00', tiempo_max_espera_min: 60,
+      });
+      mockPrisma.turnos.count.mockResolvedValue(0);
+      mockPrisma.registros_triage.findFirst.mockResolvedValue(mockRegistro);
+      mockPrisma.confirmaciones_enfermero.findFirst.mockResolvedValue(null);
+
+      const result = await service.obtenerDashboard(TURNO_ID);
+
+      const pasos = result.historial.map((h) => h.paso);
+      expect(pasos).toContain('Turno creado');
+      expect(pasos).toContain('Datos recibidos y clasificados');
+    });
+
+    it('debería mostrar datos del médico cuando el turno está EN_CONSULTA', async () => {
+      const turnoEnConsulta = {
+        ...mockTurno,
+        estado: EstadoTurno.EN_CONSULTA,
+        medico_id: 'medico-db-id',
+        llamado_en: new Date(Date.now() - 10 * 60000),
+      };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnConsulta);
+      mockPrisma.medicos.findUnique.mockResolvedValue({ id: 'medico-db-id', usuario_id: 'user-med-1', consultorio: 'C3' });
+      mockPrisma.usuarios.findUnique.mockResolvedValue({ nombre: 'Dr. Carlos', apellido: 'García' });
+      mockPrisma.niveles_triage.findUnique.mockResolvedValue({
+        id: 3, nombre: 'Amarillo', color_codigo: '#FFFF00', tiempo_max_espera_min: 60,
+      });
+      mockPrisma.turnos.count.mockResolvedValue(0);
+      mockPrisma.registros_triage.findFirst.mockResolvedValue(null);
+      mockPrisma.confirmaciones_enfermero.findFirst.mockResolvedValue(null);
+
+      const result = await service.obtenerDashboard(TURNO_ID);
+
+      expect(result.turno.consultorio_asignado).toBe('C3');
+      expect(result.turno.medico_asignado).toContain('García');
     });
   });
 
@@ -129,10 +171,20 @@ describe('DashboardPacienteService', () => {
       expect(result.total).toBe(0);
     });
 
-    it('debería retornar la posición actual + 1', async () => {
+    it('debería retornar { posicion: 0, total: 0 } si el turno no existe', async () => {
+      mockPrisma.turnos.findUnique.mockResolvedValue(null);
+
+      const result = await service.obtenerPosicion(TURNO_ID);
+
+      expect(result.posicion).toBe(0);
+      expect(result.total).toBe(0);
+    });
+
+    it('debería retornar posicion = turnosDelante + 1 y total correcto', async () => {
       mockPrisma.turnos.findUnique.mockResolvedValue(mockTurno);
-      mockCola.obtenerPosicionEnCola.mockResolvedValue(4);
-      mockCola.obtenerColaPorNivel.mockResolvedValue({ total: 10, items: [] });
+      mockPrisma.turnos.count
+        .mockResolvedValueOnce(4)  // turnosDelante
+        .mockResolvedValueOnce(10); // total
 
       const result = await service.obtenerPosicion(TURNO_ID);
 

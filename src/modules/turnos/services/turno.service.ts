@@ -315,8 +315,7 @@ export class TurnoService {
         observaciones: dto.observaciones ?? null,
         nivel_triage: turno.nivel_triage_id ?? 0,
         tiempo_espera_minutos: tiempoEsperaMin,
-        tiempo_atencion_minutos: tiempoAtencionMin,
-        fecha_atencion: new Date(),
+        tiempo_atencion_minutos: tiempoAtencionMin
       },
     });
 
@@ -392,6 +391,32 @@ export class TurnoService {
 
     this.logger.log(`Turno cancelado (paciente): ${id}`);
 
+    return turnoActualizado as unknown as Turno;
+  }
+
+  async cancelarTurno(id: string): Promise<Turno> {
+    const turno = await this.obtenerPorId(id);
+
+    const turnoActualizado = await this.prisma.turnos.update({
+      where: { id },
+      data: { estado: EstadoTurno.CANCELADO },
+    });
+
+    await this.eventPublisher.publishTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      razon: 'Cancelado por administración',
+    });
+
+    await this.coreNotifier.notificarTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      numero_turno: turno.numero_turno,
+      razon: 'Cancelado por administración',
+    });
+
+    this.logger.log(`Turno cancelado (admin): ${id}`);
     return turnoActualizado as unknown as Turno;
   }
 }
