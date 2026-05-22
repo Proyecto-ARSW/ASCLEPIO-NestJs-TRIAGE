@@ -37,9 +37,9 @@ Este servicio gestiona el ciclo de vida de un paciente desde su llegada a urgenc
 | Monitoreo    | Prometheus + Grafana              |
 | Testing      | Jest 30 + ts-jest                 |
 
----
-
 ## Estructura del proyecto
+
+```text
 src/
 ├── common/
 │   ├── decorators/        # @CurrentUser, @Roles
@@ -71,8 +71,7 @@ src/
 │
 ├── health/                # Health checks (Terminus + RabbitMQ)
 └── main.ts                # Bootstrap, CORS, pipes, filtros globales
-
----
+```
 
 ## Módulos principales
 
