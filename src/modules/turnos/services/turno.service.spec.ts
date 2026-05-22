@@ -19,7 +19,8 @@ describe('TurnoService', () => {
   const TURNO_ID = 'turno-uuid-1234';
   const PACIENTE_ID = 'paciente-uuid-1234';
   const HOSPITAL_ID = 1;
-  const MEDICO_ID = 'medico-uuid-1234';
+  const MEDICO_USUARIO_ID = 'medico-usuario-uuid-1234';
+  const MEDICO_DB_ID = 'medico-db-uuid-5678';
 
   const mockTurno = {
     id: TURNO_ID,
@@ -29,8 +30,10 @@ describe('TurnoService', () => {
     tipo_turno: TipoTurno.URGENCIA,
     estado: EstadoTurno.EN_ESPERA,
     nivel_triage_id: 3,
+    medico_id: null,
     creado_en: new Date('2026-04-23T08:00:00'),
     llamado_en: null,
+    finalizado_en: null,
     pacientes: { id: PACIENTE_ID, usuario_id: 'usuario-paciente-1' },
     hospitales: { id: HOSPITAL_ID, nombre: 'Hospital Central' },
   };
@@ -41,17 +44,17 @@ describe('TurnoService', () => {
     turnos: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
     usuarios: { findUnique: jest.fn() },
-    medicos: { findUnique: jest.fn() },
+    medicos: { findFirst: jest.fn() },
+    consultas_urgencia: { create: jest.fn().mockResolvedValue({}) },
   };
 
   const mockGenerador = { generarNumeroTurno: jest.fn().mockResolvedValue(1) };
-  const mockCola = {
-    removerDeCola: jest.fn().mockResolvedValue(undefined),
-  };
+  const mockCola = { removerDeCola: jest.fn().mockResolvedValue(undefined) };
   const mockTriageGateway = {
     emitTurnoCreado: jest.fn(),
     emitPacienteLlamado: jest.fn(),
@@ -161,12 +164,27 @@ describe('TurnoService', () => {
     it('debería retornar lista de turnos del hospital', async () => {
       const turnos = [mockTurno, { ...mockTurno, id: 'turno-2' }];
       mockPrisma.turnos.findMany.mockResolvedValue(turnos);
-      mockPrisma.turnos.findUnique = jest.fn();
-      (mockPrisma.turnos as any).findMany = jest.fn().mockResolvedValue(turnos);
 
       const result = await service.obtenerPorHospital(HOSPITAL_ID);
 
       expect(result).toHaveLength(2);
+      expect(mockPrisma.turnos.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ hospital_id: HOSPITAL_ID }),
+        }),
+      );
+    });
+
+    it('debería filtrar por estado cuando se proporciona', async () => {
+      mockPrisma.turnos.findMany.mockResolvedValue([mockTurno]);
+
+      await service.obtenerPorHospital(HOSPITAL_ID, undefined, EstadoTurno.EN_ESPERA);
+
+      expect(mockPrisma.turnos.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: EstadoTurno.EN_ESPERA }),
+        }),
+      );
     });
   });
 
@@ -184,7 +202,7 @@ describe('TurnoService', () => {
       );
     });
 
-    it('debería lanzar NotFoundException si el turno no existe al actualizar', async () => {
+    it('debería lanzar NotFoundException si el turno no existe', async () => {
       mockPrisma.turnos.findUnique.mockResolvedValue(null);
 
       await expect(service.actualizarEstado('id-inexistente', { estado: EstadoTurno.EN_CONSULTA }))
@@ -193,26 +211,32 @@ describe('TurnoService', () => {
   });
 
   describe('llamarPaciente', () => {
-    const dto: LlamarPacienteDto = { medico_id: MEDICO_ID, consultorio: 'Consultorio 3' };
+    const dto: LlamarPacienteDto = { medico_id: MEDICO_USUARIO_ID, consultorio: 'Consultorio 3' };
 
     it('debería llamar al paciente exitosamente desde EN_ESPERA', async () => {
       const turnoEnEspera = { ...mockTurno, estado: EstadoTurno.EN_ESPERA };
-      const turnoEnConsulta = { ...mockTurno, estado: EstadoTurno.EN_CONSULTA, medico_id: MEDICO_ID };
-      mockPrisma.turnos.findUnique
-        .mockResolvedValueOnce(turnoEnEspera)
-        .mockResolvedValueOnce(null)  // medico lookup
-        .mockResolvedValueOnce(null); // paciente lookup
+      const turnoEnConsulta = { ...mockTurno, estado: EstadoTurno.EN_CONSULTA, medico_id: MEDICO_DB_ID };
+      const mockMedico = { id: MEDICO_DB_ID, usuario_id: MEDICO_USUARIO_ID, consultorio: 'C3' };
+
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnEspera);
       mockCoreClient.sincronizarMedico.mockResolvedValue(undefined);
+      mockPrisma.medicos.findFirst.mockResolvedValue(mockMedico);
       mockCola.removerDeCola.mockResolvedValue(undefined);
       mockPrisma.turnos.update.mockResolvedValue(turnoEnConsulta);
-      mockPrisma.medicos.findUnique.mockResolvedValue(null);
+      mockPrisma.usuarios.findUnique
+        .mockResolvedValueOnce({ nombre: 'Dr. Carlos', apellido: 'García' }) // medicoUsuario
+        .mockResolvedValueOnce(null); // pacienteUsuario (si paciente es null)
       mockPrisma.pacientes.findUnique.mockResolvedValue(null);
-      mockPrisma.usuarios.findUnique.mockResolvedValue(null);
 
       const result = await service.llamarPaciente(TURNO_ID, dto);
 
       expect(result.estado).toBe(EstadoTurno.EN_CONSULTA);
       expect(mockCola.removerDeCola).toHaveBeenCalledWith(TURNO_ID, HOSPITAL_ID, mockTurno.nivel_triage_id);
+      expect(mockPrisma.turnos.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ estado: EstadoTurno.EN_CONSULTA, medico_id: MEDICO_DB_ID }),
+        }),
+      );
       expect(mockTriageGateway.emitPacienteLlamado).toHaveBeenCalled();
       expect(mockEventPublisher.publishPacienteLlamado).toHaveBeenCalled();
     });
@@ -224,11 +248,20 @@ describe('TurnoService', () => {
       await expect(service.llamarPaciente(TURNO_ID, dto)).rejects.toThrow(BadRequestException);
       await expect(service.llamarPaciente(TURNO_ID, dto)).rejects.toThrow('EN_ESPERA');
     });
+
+    it('debería lanzar NotFoundException si el médico no existe en la BD del triage', async () => {
+      const turnoEnEspera = { ...mockTurno, estado: EstadoTurno.EN_ESPERA };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnEspera);
+      mockCoreClient.sincronizarMedico.mockResolvedValue(undefined);
+      mockPrisma.medicos.findFirst.mockResolvedValue(null);
+
+      await expect(service.llamarPaciente(TURNO_ID, dto)).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('finalizarTurno', () => {
     const dto: FinalizarTurnoDto = {
-      medico_id: MEDICO_ID,
+      medico_id: MEDICO_USUARIO_ID,
       diagnostico: 'Gripe',
       tratamiento: 'Reposo y antipiréticos',
     };
@@ -237,15 +270,27 @@ describe('TurnoService', () => {
       const turnoEnConsulta = {
         ...mockTurno,
         estado: EstadoTurno.EN_CONSULTA,
+        medico_id: MEDICO_DB_ID, // ← obligatorio: el service valida que exista
         llamado_en: new Date('2026-04-23T09:00:00'),
       };
       const turnoAtendido = { ...turnoEnConsulta, estado: EstadoTurno.ATENDIDO };
+
       mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnConsulta);
       mockPrisma.turnos.update.mockResolvedValue(turnoAtendido);
+      mockPrisma.consultas_urgencia.create.mockResolvedValue({});
 
       const result = await service.finalizarTurno(TURNO_ID, dto);
 
       expect(result.estado).toBe(EstadoTurno.ATENDIDO);
+      expect(mockPrisma.consultas_urgencia.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            turno_id: TURNO_ID,
+            diagnostico: dto.diagnostico,
+            tratamiento: dto.tratamiento,
+          }),
+        }),
+      );
       expect(mockEventPublisher.publishPacienteAtendido).toHaveBeenCalledWith(
         expect.objectContaining({ diagnostico: dto.diagnostico, tratamiento: dto.tratamiento }),
       );
@@ -259,15 +304,28 @@ describe('TurnoService', () => {
       await expect(service.finalizarTurno(TURNO_ID, dto)).rejects.toThrow(BadRequestException);
       await expect(service.finalizarTurno(TURNO_ID, dto)).rejects.toThrow('EN_CONSULTA');
     });
+
+    it('debería lanzar BadRequestException si el turno no tiene médico asignado', async () => {
+      const turnoSinMedico = {
+        ...mockTurno,
+        estado: EstadoTurno.EN_CONSULTA,
+        medico_id: null, // ← sin médico
+        llamado_en: new Date(),
+      };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoSinMedico);
+
+      await expect(service.finalizarTurno(TURNO_ID, dto)).rejects.toThrow(BadRequestException);
+      await expect(service.finalizarTurno(TURNO_ID, dto)).rejects.toThrow('médico asignado');
+    });
   });
 
-  describe('cancelarTurno', () => {
-    it('debería cancelar el turno correctamente', async () => {
+  describe('cancelarTurnoPorPaciente', () => {
+    it('debería cancelar el turno EN_ESPERA correctamente', async () => {
       const turnoCancelado = { ...mockTurno, estado: EstadoTurno.CANCELADO };
       mockPrisma.turnos.findUnique.mockResolvedValue(mockTurno);
       mockPrisma.turnos.update.mockResolvedValue(turnoCancelado);
 
-      const result = await service.cancelarTurno(TURNO_ID);
+      const result = await service.cancelarTurnoPorPaciente(TURNO_ID);
 
       expect(result.estado).toBe(EstadoTurno.CANCELADO);
       expect(mockEventPublisher.publishTurnoCancelado).toHaveBeenCalledWith(
@@ -276,10 +334,28 @@ describe('TurnoService', () => {
       expect(mockCoreNotifier.notificarTurnoCancelado).toHaveBeenCalled();
     });
 
-    it('debería lanzar NotFoundException si el turno no existe al cancelar', async () => {
+    it('debería cancelar el turno en estado CLASIFICACION_PENDIENTE', async () => {
+      const turnoPendiente = { ...mockTurno, estado: EstadoTurno.CLASIFICACION_PENDIENTE };
+      const turnoCancelado = { ...turnoPendiente, estado: EstadoTurno.CANCELADO };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoPendiente);
+      mockPrisma.turnos.update.mockResolvedValue(turnoCancelado);
+
+      const result = await service.cancelarTurnoPorPaciente(TURNO_ID);
+
+      expect(result.estado).toBe(EstadoTurno.CANCELADO);
+    });
+
+    it('debería lanzar BadRequestException si el turno está EN_CONSULTA', async () => {
+      const turnoEnConsulta = { ...mockTurno, estado: EstadoTurno.EN_CONSULTA };
+      mockPrisma.turnos.findUnique.mockResolvedValue(turnoEnConsulta);
+
+      await expect(service.cancelarTurnoPorPaciente(TURNO_ID)).rejects.toThrow(BadRequestException);
+    });
+
+    it('debería lanzar NotFoundException si el turno no existe', async () => {
       mockPrisma.turnos.findUnique.mockResolvedValue(null);
 
-      await expect(service.cancelarTurno('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.cancelarTurnoPorPaciente('id-inexistente')).rejects.toThrow(NotFoundException);
     });
   });
 });

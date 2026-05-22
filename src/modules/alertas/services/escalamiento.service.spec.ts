@@ -6,6 +6,15 @@ import { TriageEventPublisher } from '../../eventos/publishers/triage-event.publ
 import { TriageGateway } from '../../websockets/gateways/triage.gateway';
 import { EscalarAlertaDto } from '../dto/escalar-alerta.dto';
 
+import { Logger } from '@nestjs/common';
+
+beforeAll(() => {
+  jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+  jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+  jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+});
+
 describe('EscalamientoService', () => {
   let service: EscalamientoService;
 

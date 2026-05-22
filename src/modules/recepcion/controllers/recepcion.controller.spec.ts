@@ -1,6 +1,9 @@
+// src/modules/recepcion/controllers/recepcion.controller.spec.ts
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { RecepcionController } from './recepcion.controller';
 import { RecepcionService } from '../services/recepcion.service';
+import { IsisVoiceApiKeyGuard } from '@/common/guards/isisvoice-api-key.guard';
 import { IngresoTriageDto } from '../dto/ingreso-triage.dto';
 
 describe('RecepcionController', () => {
@@ -8,13 +11,17 @@ describe('RecepcionController', () => {
 
   const mockRecepcionService = {
     procesarIngreso: jest.fn(),
+    procesarIngresoISISvoice: jest.fn(),
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [RecepcionController],
       providers: [{ provide: RecepcionService, useValue: mockRecepcionService }],
-    }).compile();
+    })
+      .overrideGuard(IsisVoiceApiKeyGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<RecepcionController>(RecepcionController);
     jest.clearAllMocks();

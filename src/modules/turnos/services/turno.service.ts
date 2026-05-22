@@ -187,36 +187,35 @@ export class TurnoService {
       );
     }
 
-    // dto.medico_id es el usuarios.id que viene del JWT del médico autenticado
+    // dto.medico_id es el medicos.id de M1 (misma PK en triage DB por sincronización)
     await this.coreClient.sincronizarMedico(dto.medico_id);
 
-    // Buscar por usuario_id DESPUÉS de sincronizar (la sincronización lo crea si no existe)
-    const medico = await this.prisma.medicos.findFirst({
-      where: { usuario_id: dto.medico_id },
+    // Buscar por id (PK) — correcto porque dto.medico_id ES el medicos.id
+    const medico = await this.prisma.medicos.findUnique({
+      where: { id: dto.medico_id },
     });
 
-    this.logger.debug(`[llamarPaciente] Buscando médico con usuario_id: ${dto.medico_id}`);
+    this.logger.debug(`[llamarPaciente] Buscando médico con id: ${dto.medico_id}`);
     this.logger.debug(`[llamarPaciente] Médico encontrado: ${JSON.stringify(medico)}`);
 
     if (!medico) {
       throw new NotFoundException(
-        `Médico con usuario_id ${dto.medico_id} no encontrado en triage`,
+        `Médico con id ${dto.medico_id} no encontrado en triage`,
       );
     }
 
-    this.logger.log(`[llamarPaciente] Médico encontrado con id: ${medico.id}`);
+    this.logger.log(`[llamarPaciente] Médico encontrado con usuario_id: ${medico.usuario_id}`);
 
     if (turno.nivel_triage_id) {
       await this.colaService.removerDeCola(id, turno.hospital_id, turno.nivel_triage_id);
       this.logger.log(`Turno removido de cola Redis`);
     }
 
-    // Usar medico.id (PK de la tabla medicos del triage), NO el usuario_id
     const turnoActualizado = await this.prisma.turnos.update({
       where: { id },
       data: {
         estado: EstadoTurno.EN_CONSULTA,
-        medico_id: medico.id,   // <-- CORREGIDO: PK de medicos
+        medico_id: medico.id,
         llamado_en: new Date(),
       },
       include: {
@@ -263,7 +262,7 @@ export class TurnoService {
       numero_turno: turno.numero_turno,
       hospital_id: turno.hospital_id,
       paciente_id: turno.paciente_id,
-      medico_id: dto.medico_id,  // se mantiene el usuario_id para que M1 lo procese
+      medico_id: dto.medico_id,
       consultorio: dto.consultorio,
       nivel_triage: turno.nivel_triage_id || 0,
       tiempo_espera_minutos: tiempoEsperaMin,
@@ -315,8 +314,7 @@ export class TurnoService {
         observaciones: dto.observaciones ?? null,
         nivel_triage: turno.nivel_triage_id ?? 0,
         tiempo_espera_minutos: tiempoEsperaMin,
-        tiempo_atencion_minutos: tiempoAtencionMin,
-        fecha_atencion: new Date(),
+        tiempo_atencion_minutos: tiempoAtencionMin
       },
     });
 
@@ -392,6 +390,32 @@ export class TurnoService {
 
     this.logger.log(`Turno cancelado (paciente): ${id}`);
 
+    return turnoActualizado as unknown as Turno;
+  }
+
+  async cancelarTurno(id: string): Promise<Turno> {
+    const turno = await this.obtenerPorId(id);
+
+    const turnoActualizado = await this.prisma.turnos.update({
+      where: { id },
+      data: { estado: EstadoTurno.CANCELADO },
+    });
+
+    await this.eventPublisher.publishTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      razon: 'Cancelado por administración',
+    });
+
+    await this.coreNotifier.notificarTurnoCancelado({
+      turno_id: turno.id,
+      hospital_id: turno.hospital_id,
+      paciente_id: turno.paciente_id,
+      numero_turno: turno.numero_turno,
+      razon: 'Cancelado por administración',
+    });
+
+    this.logger.log(`Turno cancelado (admin): ${id}`);
     return turnoActualizado as unknown as Turno;
   }
 }
